@@ -31,7 +31,11 @@ struct PrcmRegisters {
     pub gpio_clk_gate_sleep: ReadWrite<u32, ClockGate::Register>,
     pub gpio_clk_gate_deep_sleep: ReadWrite<u32, ClockGate::Register>,
 
-    _reserved3: [ReadOnly<u8>; 0x18],
+    _reserved3: [ReadOnly<u8>; 0xC],
+
+    pub i2c_clk_gate_run: ReadWrite<u32, ClockGate::Register>,
+    pub i2c_clk_gate_sleep: ReadWrite<u3, ClockGate::Register2>,
+    pub i2c_clk_gate_deep_sleep: ReadWrite<u3, ClockGate::Register2>,
 
     pub uart_clk_gate_run: ReadWrite<u32, ClockGate::Register>,
     pub uart_clk_gate_sleep: ReadWrite<u32, ClockGate::Register>,
@@ -156,5 +160,36 @@ impl Clock {
             .modify(SECDMAClockGate::TRNG_CLK_EN::SET);
 
         prcm_commit();
+    }
+    pub fn enable_uart_run() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.uart_clk_gate_run.write(ClockGate::CLK_EN::SET);
+        regs.uart_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
+        regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+
+        prcm_commit();
+    }
+
+    pub fn enable_trng() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.sec_dma_clk_run.write(SECDMAClockGate::TRNG_EN::SET);
+        regs.sec_dma_clk_sleep.write(SECDMAClockGate::TRNG_EN::SET);
+        regs.sec_dma_clk_deep_sleep.write(SECDMAClockGate::TRNG_EN::SET);
+
+        prcm_commit();
+    }
+
+    pub fn enable_i2c() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.i2c_clk_gate_run.write(ClockGate::CLK_EN::SET);
+        regs.i2c_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
+        regs.i2c_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+
+        prcm_commit();
+    }
+
+    pub fn i2c_run_clk_enabled() -> bool {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.i2c_clk_gate_run.is_set(ClockGate::CLK_EN)
     }
 }
