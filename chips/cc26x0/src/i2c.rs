@@ -1,6 +1,6 @@
-use prcm;
-use ioc;
-use gpio;
+use cc26xx::prcm;
+use cc26xx::ioc;
+use cc26xx::gpio;
 use kernel::hil;
 use kernel::hil::gpio::Pin;
 use core::cell::Cell;
@@ -36,9 +36,9 @@ pub const MCU_CLOCK: u32 = 48_000_000;
 
 #[derive(PartialEq)]
 pub enum I2cInterface {
-    INTERFACE0 = 0,
-    INTERFACE1 = 1,
-    NO_INTERFACE = 2,
+    Interface0 = 0,
+    Interface1 = 1,
+    NoInterface = 2,
 }
 
 #[repr(C)]
@@ -77,7 +77,7 @@ impl I2C {
         I2C {
             regs: I2C_BASE as *mut Registers,
             slave_addr: Cell::new(0),
-            interface: Cell::new(I2cInterface::NO_INTERFACE as u8),
+            interface: Cell::new(I2cInterface::NoInterface as u8),
             client: Cell::new(None),
         }
     }
@@ -351,7 +351,7 @@ impl I2C {
 
             self.master_disable();
 
-            if interface == I2cInterface::INTERFACE0 as u8 {
+            if interface == I2cInterface::Interface0 as u8 {
                 unsafe {
                     ioc::IOCFG[BOARD_IO_SDA].enable_i2c_sda();
                     ioc::IOCFG[BOARD_IO_SCL].enable_i2c_scl();
@@ -359,7 +359,7 @@ impl I2C {
                     gpio::PORT[BOARD_IO_SCL_HP].make_input();
                 }
             }
-                else if interface == I2cInterface::INTERFACE1 as u8 {
+                else if interface == I2cInterface::Interface1 as u8 {
                     unsafe {
                         ioc::IOCFG[BOARD_IO_SDA_HP].enable_i2c_sda();
                         ioc::IOCFG[BOARD_IO_SCL_HP].enable_i2c_scl();
