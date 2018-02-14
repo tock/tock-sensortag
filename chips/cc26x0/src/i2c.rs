@@ -34,7 +34,7 @@ pub const BOARD_IO_SCL_HP: usize = 0x9;
 
 pub const MCU_CLOCK: u32 = 48_000_000;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum I2cInterface {
     Interface0 = 0,
     Interface1 = 1,
