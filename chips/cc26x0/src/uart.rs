@@ -4,7 +4,6 @@ use kernel::hil::gpio::Pin;
 use kernel::hil::uart;
 use kernel;
 use cc26xx::{prcm,gpio,peripheral_interrupts};
-use cortexm3::nvic;
 
 pub const UART_CTL_UARTEN: u32 = 1;
 pub const UART_CTL_TXE: u32 = 1 << 8;
@@ -131,11 +130,6 @@ impl UART {
     }
 
     pub fn disable_interrupts(&self) {
-        unsafe {
-            let uart0_int = nvic::Nvic::new(peripheral_interrupts::UART0);
-            uart0_int.disable();
-        }
-
         // Disable all UART module interrupts
         let regs = unsafe { &*self.regs };
         regs.imsc.set(regs.imsc.get() & !UART_INT_ALL);
@@ -151,11 +145,6 @@ impl UART {
 
         // We don't care about TX interrupts
         regs.imsc.set(regs.imsc.get() | UART_INT_RT | UART_INT_RX);
-
-        unsafe {
-            let uart0_int = nvic::Nvic::new(peripheral_interrupts::UART0);
-            uart0_int.enable();
-        }
     }
 
     pub fn send_byte(&self, c: u8) {
