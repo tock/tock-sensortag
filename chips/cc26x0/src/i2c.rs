@@ -58,12 +58,15 @@ pub struct Registers {
     pub mdr: VolatileCell<u32>,
     pub mtpr: VolatileCell<u32>,
     pub mimr: VolatileCell<u32>,
+    pub mris: VolatileCell<u32>,
     pub mmis: VolatileCell<u32>,
     pub micr: VolatileCell<u32>,
     pub mcr: VolatileCell<u32>,
 }
 
 pub const I2C_BASE: *mut Registers = 0x4000_2000 as *mut Registers;
+
+pub static mut I2C0: I2C = I2C::new();
 
 pub struct I2C {
     regs: *mut Registers,
@@ -176,7 +179,7 @@ impl I2C {
         self.busy_wait_master();
         let mut success = self.status();
 
-        for i in 0..len {
+        for i in 1..len {
             if !success { break; }
             self.master_put_data(data[i as usize]);
             if i < len - 1 {
@@ -207,7 +210,7 @@ impl I2C {
         self.busy_wait_master();
         let mut success = self.status();
 
-        for i in 0..write_len {
+        for i in 1..write_len {
             if !success { break; }
 
             self.master_put_data(data[i as usize]);
@@ -338,7 +341,7 @@ impl I2C {
         true
     }
 
-    fn select(&self, new_interface: I2cInterface, addr: u8) {
+    pub fn select(&self, new_interface: I2cInterface, addr: u8) {
         self.slave_addr.set(addr);
 
         if !self.accessible() {
