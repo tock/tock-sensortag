@@ -181,6 +181,7 @@ impl UART {
 
         // Clear interrupts
         regs.icr.set(UART_INT_ALL);
+
     }
 }
 
@@ -197,15 +198,20 @@ impl kernel::hil::uart::UART for UART {
         self.enable_interrupts();
     }
 
-    #[allow(unused)]
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
         if tx_len == 0 { return; }
 
         for i in 0..tx_len {
             self.send_byte(tx_data[i]);
         }
+
+        self.client.get().map(move |client| {
+            client.transmit_complete(tx_data, kernel::hil::uart::Error::CommandComplete);
+        });
     }
 
     #[allow(unused)]
-    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
+    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {
+        unimplemented!()
+    }
 }
