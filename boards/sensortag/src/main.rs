@@ -197,6 +197,8 @@ pub unsafe fn reset_handler() {
     );
     cc26xx::trng::TRNG.set_client(rng);
 
+    cc26x0::radio::RFC.enable();
+
     let sensortag = Platform {
         gpio,
         led,

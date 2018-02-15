@@ -20,7 +20,9 @@ struct PrcmRegisters {
     // Write 1 in order to load settings
     pub clk_load_ctl: ReadWrite<u32, ClockLoad::Register>,
 
-    _reserved1: [ReadOnly<u8>; 0x10],
+    pub rfc_clk_gate: ReadWrite<u32, ClockGate::Register>,
+
+    _reserved1: [ReadOnly<u8>; 0xC],
 
     // TRNG, Crypto, and UDMA
     pub sec_dma_clk_run: ReadWrite<u32, SECDMAClockGate::Register>,
@@ -58,6 +60,14 @@ struct PrcmRegisters {
     pub pd_stat0_rfc: ReadOnly<u32, PowerDomainSingle::Register>,
     pub pd_stat0_serial: ReadOnly<u32, PowerDomainSingle::Register>,
     pub pd_stat0_periph: ReadOnly<u32, PowerDomainSingle::Register>,
+
+    _reserved7: [ReadOnly<u8>; 0x2C],
+
+    pub pd_ctl1: ReadWrite<u32, PowerDomain1::Register>,
+
+    _reserved8: [ReadOnly<u8>; 0x14],
+
+    pub pd_stat1: ReadOnly<u32, PowerDomainStatus1::Register>,
 }
 
 register_bitfields![
@@ -79,6 +89,9 @@ register_bitfields![
         SERIAL_ON   OFFSET(1) NUMBITS(1) [],
         RFC_ON      OFFSET(0) NUMBITS(1) []
     ],
+    PowerDomain1 [
+        RFC_ON      OFFSET(2) NUMBITS(1) []
+    ],
     PowerDomainSingle [
         ON  OFFSET(0) NUMBITS(1) []
     ],
@@ -86,6 +99,9 @@ register_bitfields![
         PERIPH_ON   OFFSET(2) NUMBITS(1) [],
         SERIAL_ON   OFFSET(1) NUMBITS(1) [],
         RFC_ON      OFFSET(0) NUMBITS(1) []
+    ],
+    PowerDomainStatus1 [
+        RFC_ON      OFFSET(2) NUMBITS(1) []
     ]
 ];
 
@@ -123,7 +139,11 @@ impl Power {
             }
             PowerDomain::Serial => {
                 regs.pd_ctl0.modify(PowerDomain0::SERIAL_ON::SET);
-            }
+            },
+            PowerDomain::RFC => {
+                regs.pd_ctl0.modify(PowerDomain0::RFC_ON::SET);
+                regs.pd_ctl1.modify(PowerDomain1::RFC_ON::SET);
+            },
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");
             }
@@ -135,6 +155,7 @@ impl Power {
         match domain {
             PowerDomain::Peripherals => regs.pd_stat0_periph.is_set(PowerDomainSingle::ON),
             PowerDomain::Serial => regs.pd_stat0_serial.is_set(PowerDomainSingle::ON),
+            PowerDomain::RFC => regs.pd_stat1.is_set(PowerDomainStatus1::RFC_ON),
             _ => false,
         }
     }
@@ -178,6 +199,13 @@ impl Clock {
         regs.sec_dma_clk_run.write(SECDMAClockGate::TRNG_CLK_EN::SET);
         regs.sec_dma_clk_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
         regs.sec_dma_clk_deep_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
+
+        prcm_commit();
+    }
+
+    pub fn enable_rfc() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.rfc_clk_gate.write(ClockGate::CLK_EN::SET);
 
         prcm_commit();
     }
