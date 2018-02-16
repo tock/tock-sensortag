@@ -1,4 +1,3 @@
-use kernel::common::take_cell::TakeCell;
 use i2c::I2cInterface;
 use core::cell::Cell;
 use sensor::Sensor;

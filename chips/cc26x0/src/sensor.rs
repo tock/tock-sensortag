@@ -1,5 +1,4 @@
 use i2c;
-use core::cell::Cell;
 
 pub const BUFFER_SIZE: usize = 32;
 

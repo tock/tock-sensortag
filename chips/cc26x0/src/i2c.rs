@@ -1,7 +1,6 @@
 use cc26xx::prcm;
 use cc26xx::ioc;
 use cc26xx::gpio;
-use kernel::hil;
 use kernel::hil::gpio::Pin;
 use core::cell::Cell;
 use kernel::common::VolatileCell;
@@ -72,7 +71,6 @@ pub struct I2C {
     regs: *mut Registers,
     slave_addr: Cell<u8>,
     interface: Cell<u8>,
-    client: Cell<Option<&'static hil::i2c::I2CHwMasterClient>>,
 }
 
 impl I2C {
@@ -81,7 +79,6 @@ impl I2C {
             regs: I2C_BASE as *mut Registers,
             slave_addr: Cell::new(0),
             interface: Cell::new(I2cInterface::NoInterface as u8),
-            client: Cell::new(None),
         }
     }
 
