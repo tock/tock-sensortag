@@ -136,7 +136,7 @@ impl I2C {
         self.status()
     }
 
-    pub fn read(&self, data: &'static mut [u8], len: u8) -> bool {
+    pub fn read(&self, data: &mut [u8], len: u8) -> bool {
         self.set_master_slave_address(self.slave_addr.get(), true);
 
         self.busy_wait_master_bus();
@@ -168,7 +168,7 @@ impl I2C {
         success
     }
 
-    pub fn write(&self, data: &'static mut [u8], len: u8) -> bool {
+    pub fn write(&self, data: & [u8], len: u8) -> bool {
         self.set_master_slave_address(self.slave_addr.get(), false);
 
         self.master_put_data(data[0]);
@@ -199,7 +199,7 @@ impl I2C {
         success
     }
 
-    pub fn write_read(&self, data: &'static mut [u8], write_len: u8, read_len: u8) -> bool {
+    pub fn write_read(&self, data: &mut [u8], write_len: u8, read_len: u8) -> bool {
         self.set_master_slave_address(self.slave_addr.get(), false);
 
         self.master_put_data(data[0]);
@@ -232,6 +232,7 @@ impl I2C {
             success = self.status();
             if success {
                 data[i as usize] = self.master_get_data() as u8;
+                debug!("Data i: {}", data[i as usize]);
                 self.master_control(I2C_MASTER_CMD_BURST_RECEIVE_CONT);
                 i += 1;
             }
@@ -375,31 +376,4 @@ impl I2C {
         }
     }
 
-}
-
-impl hil::i2c::I2CMaster for I2C {
-    /// This enables the entire I2C peripheral
-    #[allow(unused)]
-    fn enable(&self) {
-    }
-
-    /// This disables the entire I2C peripheral
-    #[allow(unused)]
-    fn disable(&self) {
-    }
-
-    fn write(&self, addr: u8, data: &'static mut [u8], len: u8) {
-        self.slave_addr.set(addr);
-        self.write(data, len);
-    }
-
-    fn read(&self, addr: u8, data: &'static mut [u8], len: u8) {
-        self.slave_addr.set(addr);
-        self.read(data, len);
-    }
-
-    fn write_read(&self, addr: u8, data: &'static mut [u8], write_len: u8, read_len: u8) {
-        self.slave_addr.set(addr);
-        self.write_read(data, write_len, read_len);
-    }
 }
