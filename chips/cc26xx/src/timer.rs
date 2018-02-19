@@ -46,10 +46,6 @@ pub struct Registers {
 pub const GPT_ONE_SHOT: u32 = 0x1;
 pub const GPT_REG_BIT: u32 = 0x1;
 
-// One tick per usec if we assume clock runs at 48 MHz
-// Prescaler ratio = Value loaded in TnPR + 1
-pub const GPT_PRE_SCALER: u32 = 47;
-
 pub struct Timer {
    regs: *const Registers,
    reg_bit: u32,
@@ -81,7 +77,6 @@ impl Timer {
       regs.cfg.set(0);
 
       regs.tamr.set(GPT_ONE_SHOT);
-      regs.tapr.set(GPT_PRE_SCALER);
       regs.tailr.set(value);
 
       regs.ctl.set(regs.ctl.get() | self.reg_bit);
