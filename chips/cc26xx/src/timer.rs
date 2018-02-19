@@ -1,4 +1,6 @@
 use kernel::common::VolatileCell;
+use core::cell::Cell;
+use prcm;
 
 #[repr(C)]
 pub struct Registers {
@@ -41,11 +43,60 @@ pub struct Registers {
    pub andccp: VolatileCell<u32>,
 }
 
-pub const GPT0_BASE: *mut Registers = 0x4001_0000 as *mut Registers;
-pub const GPT1_BASE: *mut Registers = 0x4001_1000 as *mut Registers;
-pub const GPT2_BASE: *mut Registers = 0x4001_2000 as *mut Registers;
-pub const GPT3_BASE: *mut Registers = 0x4001_3000 as *mut Registers;
+pub const GPT_ONE_SHOT: u32 = 0x1;
+pub const GPT_REG_BIT: u32 = 0x1;
+
+// One tick per usec if we assume clock runs at 48 MHz
+// Prescaler ratio = Value loaded in TnPR + 1
+pub const GPT_PRE_SCALER: u32 = 47;
 
 pub struct Timer {
-   regs: *mut Registers,
+   regs: *const Registers,
+   reg_bit: u32,
+   client: Cell<Option<&'static TimerClient>>,
+}
+
+trait TimerClient {
+   fn fired(&self);
+}
+
+impl Timer {
+   pub const fn new(gpt_base: u32) -> Timer {
+      Timer {
+         regs: gpt_base as *const Registers,
+         reg_bit: GPT_REG_BIT,
+         client: Cell::new(None),
+      }
+   }
+
+   pub fn init(&self) {
+      prcm::Power::enable_domain(prcm::PowerDomain::Serial);
+      while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { }
+      prcm::Clock::enable_gpt();
+   }
+
+   pub fn one_shot(&self, value: u32) {
+      let regs: &Registers = unsafe { &*self.regs };
+      regs.ctl.set(regs.ctl.get() & !self.reg_bit);
+      regs.cfg.set(0);
+
+      regs.tamr.set(GPT_ONE_SHOT);
+      regs.tapr.set(GPT_PRE_SCALER);
+      regs.tailr.set(value);
+
+      regs.ctl.set(regs.ctl.get() | self.reg_bit);
+   }
+
+   pub fn has_fired(&self) -> bool {
+     let regs: &Registers = unsafe { &*self.regs };
+     (regs.ris.get() & self.reg_bit) != 0
+   }
+
+   pub fn handle_interrupt(&self) {
+      let regs: &Registers = unsafe { &*self.regs };
+      regs.iclr.set(regs.iclr.get() | self.reg_bit);
+      self.client.get().map(|client| {
+         client.fired();
+      });
+   }
 }
