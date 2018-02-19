@@ -12,7 +12,6 @@ extern crate cc26x0;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::prcm;
 use cc26xx::aon;
 
 #[macro_use]
@@ -65,14 +64,8 @@ pub unsafe fn reset_handler() {
     // Setup AON event defaults
     aon::AON_EVENT.setup();
 
-    // Power on peripherals (eg. GPIO)
-    prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
-
-    // Wait for it to turn on until we continue
-    while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
-
-    // Enable the GPIO clocks
-    prcm::Clock::enable_gpio();
+    // Power on peripheral domain and gpio clocks
+    cc26xx::gpio::power_on_gpio();
 
     // LEDs
     let led_pins = static_init!(
