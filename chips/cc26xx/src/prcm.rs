@@ -31,7 +31,9 @@ struct PrcmRegisters {
     pub gpio_clk_gate_sleep: ReadWrite<u32, ClockGate::Register>,
     pub gpio_clk_gate_deep_sleep: ReadWrite<u32, ClockGate::Register>,
 
-    _reserved3: [ReadOnly<u8>; 0xC],
+    pub gpt_clk_gate_run: ReadWrite<u3, ClockGate::Register2>,
+    pub gpt_clk_gate_sleep: ReadWrite<u3, ClockGate::Register2>,
+    pub gpt_clk_gate_deep_sleep: ReadWrite<u32, ClockGate::Register>,
 
     pub i2c_clk_gate_run: ReadWrite<u32, ClockGate::Register>,
     pub i2c_clk_gate_sleep: ReadWrite<u3, ClockGate::Register2>,
@@ -161,6 +163,7 @@ impl Clock {
 
         prcm_commit();
     }
+
     pub fn enable_uart_run() {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.uart_clk_gate_run.write(ClockGate::CLK_EN::SET);
@@ -184,6 +187,15 @@ impl Clock {
         regs.i2c_clk_gate_run.write(ClockGate::CLK_EN::SET);
         regs.i2c_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
         regs.i2c_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+
+        prcm_commit();
+    }
+
+    pub fn enable_gpt() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.gpt_clk_gate_run.write(ClockGate::CLK_EN::SET);
+        regs.gpt_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
+        regs.gpt_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
 
         prcm_commit();
     }
