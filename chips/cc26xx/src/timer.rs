@@ -43,8 +43,22 @@ pub struct Registers {
    pub andccp: VolatileCell<u32>,
 }
 
+pub const GPT_CFG_32_BIT: u32 = 0x0;
 pub const GPT_ONE_SHOT: u32 = 0x1;
 pub const GPT_REG_BIT: u32 = 0x1;
+
+#[derive(Copy,Clone,PartialEq)]
+pub enum TimerBase {
+   GPT0 = 0x4001_0000,
+   GPT1 = 0x4001_1000,
+   GPT2 = 0x4001_2000,
+   GPT3 = 0x4001_3000,
+}
+
+pub static mut GPT0: Timer = Timer::new(TimerBase::GPT0);
+pub static mut GPT1: Timer = Timer::new(TimerBase::GPT1);
+pub static mut GPT2: Timer = Timer::new(TimerBase::GPT2);
+pub static mut GPT3: Timer = Timer::new(TimerBase::GPT3);
 
 pub struct Timer {
    regs: *const Registers,
@@ -56,35 +70,40 @@ trait TimerClient {
    fn fired(&self);
 }
 
+pub fn power_on_timers() {
+    prcm::Power::enable_domain(prcm::PowerDomain::Serial);
+    while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { }
+    prcm::Clock::enable_gpt();
+}
+
 impl Timer {
-   pub const fn new(gpt_base: u32) -> Timer {
+   const fn new(gpt_base: TimerBase) -> Timer {
       Timer {
-         regs: gpt_base as *const Registers,
+         regs: (gpt_base as u32) as *const Registers,
          reg_bit: GPT_REG_BIT,
          client: Cell::new(None),
       }
    }
 
-   pub fn init(&self) {
-      prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-      while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { }
-      prcm::Clock::enable_gpt();
-   }
-
    pub fn one_shot(&self, value: u32) {
-      let regs: &Registers = unsafe { &*self.regs };
-      regs.ctl.set(regs.ctl.get() & !self.reg_bit);
-      regs.cfg.set(0);
+       let regs: &Registers = unsafe { &*self.regs };
 
-      regs.tamr.set(GPT_ONE_SHOT);
-      regs.tailr.set(value);
+       // Disable timer before configuration
+       regs.ctl.set(regs.ctl.get() & !self.reg_bit);
+       regs.cfg.set(GPT_CFG_32_BIT);
 
-      regs.ctl.set(regs.ctl.get() | self.reg_bit);
+       // Set type and initial timer value
+       regs.tamr.set(GPT_ONE_SHOT);
+       regs.tailr.set(value);
+
+       // Enable interrupts and start the timer
+       regs.imr.set(self.reg_bit);
+       regs.ctl.set(regs.ctl.get() | self.reg_bit);
    }
 
    pub fn has_fired(&self) -> bool {
      let regs: &Registers = unsafe { &*self.regs };
-     (regs.ris.get() & self.reg_bit) != 0
+     (regs.mis.get() & self.reg_bit) != 0
    }
 
    pub fn handle_interrupt(&self) {

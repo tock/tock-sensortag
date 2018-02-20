@@ -1,5 +1,5 @@
 use cortexm3::{self, nvic};
-use cc26xx::{gpio,rtc};
+use cc26xx::{gpio,rtc,timer};
 use cc26xx::peripheral_interrupts::*;
 
 use uart;
@@ -39,7 +39,14 @@ impl kernel::Chip for Cc26x0 {
                     GPIO => gpio::PORT.handle_interrupt(),
                     AON_RTC => rtc::RTC.handle_interrupt(),
                     UART0 => uart::UART0.handle_interrupt(),
-
+                    GPT0A => timer::GPT0.handle_interrupt(),
+                    GPT0B => timer::GPT0.handle_interrupt(),
+                    GPT1A => timer::GPT1.handle_interrupt(),
+                    GPT1B => timer::GPT1.handle_interrupt(),
+                    GPT2A => timer::GPT2.handle_interrupt(),
+                    GPT2B => timer::GPT2.handle_interrupt(),
+                    GPT3A => timer::GPT3.handle_interrupt(),
+                    GPT3B => timer::GPT3.handle_interrupt(),
                     // AON Programmable interrupt
                     // We need to ignore JTAG events since some debuggers emit these
                     AON_PROG => (),
