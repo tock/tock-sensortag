@@ -16,5 +16,6 @@ pub mod uart;
 pub mod i2c;
 pub mod sensor;
 pub mod hdc;
+pub mod mpu;
 
 pub use crt1::init;
