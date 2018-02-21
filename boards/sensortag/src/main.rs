@@ -13,6 +13,7 @@ extern crate cc26x0;
 extern crate kernel;
 
 use cc26xx::aon;
+use cc26x0::radio;
 
 #[macro_use]
 pub mod io;
@@ -197,7 +198,22 @@ pub unsafe fn reset_handler() {
     );
     cc26xx::trng::TRNG.set_client(rng);
 
-    cc26x0::radio::RFC.enable();
+    radio::RFC.enable();
+    for _i in 0..0x2FFFFF {
+        asm!("nop");
+    }
+    radio::RFC.setup();
+    /*match radio::RFC.setup() {
+        radio::rfc::RfcResult::Error(status) => panic!("Unable to setup radio, returned status 0x{:x}", status),
+        _ => ()
+    }*/
+
+    /*loop {
+        //cc26x0::radio::RFC.perform_advertise_round();
+        for _i in 0..0x6FFFFF {
+            asm!("nop");
+        }
+    }*/
 
     let sensortag = Platform {
         gpio,
@@ -210,7 +226,7 @@ pub unsafe fn reset_handler() {
 
     let mut chip = cc26x0::chip::Cc26x0::new();
 
-    println!("Initialization complete. Entering main loop\r");
+    debug!("Initialization complete. Entering main loop\r");
     extern "C" {
         /// Beginning of the ROM region containing app images.
         static _sapps: u8;

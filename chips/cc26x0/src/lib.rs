@@ -8,6 +8,7 @@ extern crate cortexm3;
 extern crate kernel;
 extern crate cc26xx;
 
+#[macro_use]
 extern crate bitfield;
 
 pub mod chip;

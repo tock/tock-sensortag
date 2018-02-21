@@ -49,7 +49,7 @@ impl kernel::Chip for Cc26x0 {
                     GPT3A => timer::GPT3.handle_interrupt(),
                     GPT3B => timer::GPT3.handle_interrupt(),
 
-                    RF_CMD_ACK => radio::RFC.handle_interrupt(radio::RfcInterrupt::CmdAck),
+                    RF_CMD_ACK => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::CmdAck),
 
                     // AON Programmable interrupt
                     // We need to ignore JTAG events since some debuggers emit these
