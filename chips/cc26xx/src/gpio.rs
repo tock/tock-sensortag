@@ -16,17 +16,19 @@ const GPIO_BASE: *const GpioRegisters = 0x4002_2000 as *const GpioRegisters;
 
 #[repr(C)]
 pub struct GpioRegisters {
-    _reserved0: [u8; 0x90],
-    pub dout_set: WriteOnly<u32>,
+    _reserved0: [u8; 0x80],
+    pub dout_31_0: ReadWrite<u32>,
     _reserved1: [u8; 0xC],
-    pub dout_clr: WriteOnly<u32>,
+    pub dout_set: WriteOnly<u32>,
     _reserved2: [u8; 0xC],
-    pub dout_tgl: WriteOnly<u32>,
+    pub dout_clr: WriteOnly<u32>,
     _reserved3: [u8; 0xC],
-    pub din: ReadWrite<u32>,
+    pub dout_tgl: WriteOnly<u32>,
     _reserved4: [u8; 0xC],
-    pub doe: ReadWrite<u32>,
+    pub din: ReadWrite<u32>,
     _reserved5: [u8; 0xC],
+    pub doe: ReadWrite<u32>,
+    _reserved6: [u8; 0xC],
     pub evflags: ReadWrite<u32>,
 }
 
@@ -74,6 +76,11 @@ impl GPIOPin {
 
     pub fn iocfg(&self) -> &ioc::IocfgPin {
         &ioc::IOCFG[self.pin]
+    }
+
+    pub fn get_dout_all_pins(&self) -> u32 {
+        let regs: &GpioRegisters = unsafe { &*self.regs };
+        regs.dout_31_0.get()
     }
 }
 
