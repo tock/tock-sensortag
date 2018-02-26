@@ -1,3 +1,5 @@
+#![feature(lang_items, compiler_builtins_lib, asm)]
+
 use kernel::hil::gpio::Pin;
 use kernel::hil;
 use cc26xx::ioc;
@@ -13,8 +15,8 @@ pub const MPU_POWER_IOID: u32 = 0xC;
 pub const MPU_INT_IOID: u32 = 0x7;
 
 pub const MPU_DEFAULT_ACC_RANGE: u8 = 0x11;
-pub const MPU_ACC_DATA_SIZE: usize = 6;
-pub const MPU_ACC_NUM_AXES: usize = 3;
+pub const MPU_DATA_SIZE: usize = 6;
+pub const MPU_NUM_AXES: usize = 3;
 
 // MPU registers
 pub const MPU_CONFIG: u8 =              0x1A;
@@ -72,20 +74,28 @@ impl MPU {
         delay();
     }
 
-    pub unsafe fn read_from_acc(&self) -> [i16; MPU_ACC_NUM_AXES]{
+    pub unsafe fn read_from_acc(&self) -> [i16; MPU_NUM_AXES]{
         self.sensor.get().select();
-        let mut buf = [0; MPU_ACC_DATA_SIZE];
-        self.sensor.get().read_from_reg(MPU_ACCEL_XOUT_H, &mut buf, MPU_ACC_DATA_SIZE as u8);
+        let mut buf = [0; MPU_DATA_SIZE];
+        self.sensor.get().read_from_reg(MPU_ACCEL_XOUT_H, &mut buf, MPU_DATA_SIZE as u8);
         self.sensor.get().deselect();
-        self.convert_acc_vals(buf)
+        self.convert_vals(buf, 2048)
     }
 
-    fn convert_acc_vals(&self, vals: [u8; MPU_ACC_DATA_SIZE]) -> [i16; MPU_ACC_NUM_AXES]{
-        let mut converted_vals = [0; MPU_ACC_NUM_AXES];
-        for i in 0..MPU_ACC_NUM_AXES {
+    pub unsafe fn read_from_gyro(&self) -> [i16; MPU_NUM_AXES] {
+        self.sensor.get().select();
+        let mut buf = [0; MPU_DATA_SIZE];
+        self.sensor.get().read_from_reg(MPU_GYRO_XOUT_H, &mut buf, MPU_DATA_SIZE as u8);
+        self.sensor.get().deselect();
+        self.convert_vals(buf, 131)
+    }
+
+    fn convert_vals(&self, vals: [u8; MPU_DATA_SIZE], div: i16) -> [i16; MPU_NUM_AXES]{
+        let mut converted_vals = [0; MPU_NUM_AXES];
+        for i in 0..MPU_NUM_AXES {
             let index = i * 2;
             let raw = (vals[index+1] as i16) << 8 | vals[index] as i16;
-            converted_vals[i] = raw / 2048;
+            converted_vals[i] = raw / div;
         }
         converted_vals
     }
