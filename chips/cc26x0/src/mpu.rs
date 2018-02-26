@@ -1,31 +1,26 @@
+use kernel::hil::gpio::Pin;
+use kernel::hil;
+use cc26xx::ioc;
 use i2c::I2cInterface;
 use core::cell::Cell;
 use sensor::Sensor;
+use cc26xx::gpio;
 
 pub const MPU_INTERFACE: I2cInterface = I2cInterface::Interface1;
 pub const MPU_ADDRESS: u8 = 0x68;
 
+pub const MPU_POWER_IOID: u32 = 0xC;
+pub const MPU_INT_IOID: u32 = 0x7;
+
+pub const MPU_DEFAULT_ACC_RANGE: u8 = 0x11;
+pub const MPU_ACC_DATA_SIZE: usize = 6;
+pub const MPU_ACC_NUM_AXES: usize = 3;
+
 // MPU registers
-pub const MPU_SELF_TEST_X_GYRO: u8 =    0x00;
-pub const MPU_SELF_TEST_Y_GYRO: u8 =    0x01;
-pub const MPU_SELF_TEST_Z_GYRO: u8 =    0x02;
-pub const MPU_SELF_TEST_X_ACCEL: u8 =   0x0D;
-pub const MPU_SELF_TEST_Z_ACCEL: u8 =   0x0E;
-pub const MPU_SELF_TEST_Y_ACCEL: u8 =   0x0F;
-pub const MPU_XG_OFFSET_H: u8 =         0x13;
-pub const MPU_XG_OFFSET_L: u8 =         0x14;
-pub const MPU_YG_OFFSET_H: u8 =         0x15;
-pub const MPU_YG_OFFSET_L: u8 =         0x16;
-pub const MPU_ZG_OFFSET_H: u8 =         0x17;
-pub const MPU_ZG_OFFSET_L: u8 =         0x18;
-pub const MPU_SMPLRT_DIV: u8 =          0x19;
 pub const MPU_CONFIG: u8 =              0x1A;
 pub const MPU_GYRO_CONFIG: u8 =         0x1B;
 pub const MPU_ACCEL_CONFIG: u8 =        0x1C;
 pub const MPU_ACCEL_CONFIG_2: u8 =      0x1D;
-pub const MPU_LP_ACCEL_ODR: u8 =        0x1E;
-pub const MPU_WOM_THR: u8 =             0x1F;
-pub const MPU_FIFO_EN: u8 =             0x23;
 pub const MPU_INT_PIN_CFG: u8 =         0x37;
 pub const MPU_INT_ENABLE: u8 =          0x38;
 pub const MPU_INT_STATUS: u8 =          0x3A;
@@ -43,32 +38,80 @@ pub const MPU_GYRO_YOUT_H: u8 =         0x45;
 pub const MPU_GYRO_YOUT_L: u8 =         0x46;
 pub const MPU_GYRO_ZOUT_H: u8 =         0x47;
 pub const MPU_GYRO_ZOUT_L: u8 =         0x48;
-pub const MPU_SIGNAL_PATH_RESET: u8 =   0x68;
-pub const MPU_ACCEL_INTEL_CTRL: u8 =    0x69;
 pub const MPU_USER_CTRL: u8 =           0x6A;
 pub const MPU_PWR_MGMT_1: u8 =          0x6B;
 pub const MPU_PWR_MGMT_2: u8 =          0x6C;
-pub const MPU_FIFO_COUNT_H: u8 =        0x72;
-pub const MPU_FIFO_COUNT_L: u8 =        0x73;
-pub const MPU_FIFO_R_W: u8 =            0x74;
-pub const MPU_WHO_AM_I: u8 =            0x75;
+
+unsafe fn delay() {
+    for _ in 0..0xFFFFF {
+        asm!("NOP");
+    }
+}
 
 pub struct MPU {
     sensor: Cell<Sensor>,
 }
 
 impl MPU {
-    fn new() -> MPU {
+    pub const fn new() -> MPU {
         MPU {
             sensor: Cell::new(Sensor::new(MPU_INTERFACE, MPU_ADDRESS)),
         }
     }
 
-    unsafe fn int_status(&self) -> u8 {
+    pub unsafe fn data_ready(&self) -> bool {
         self.sensor.get().select();
-        let mut buf = [0, 1];
+        let mut buf = [0];
         self.sensor.get().read_from_reg(MPU_INT_STATUS, &mut buf, 1);
         self.sensor.get().deselect();
-        buf[0]
+        buf[0] & 1 != 0
+    }
+
+    unsafe fn power_up(&self) {
+        gpio::PORT[MPU_POWER_IOID as usize].set();
+        delay();
+    }
+
+    pub unsafe fn read_from_acc(&self) -> [i16; MPU_ACC_NUM_AXES]{
+        self.sensor.get().select();
+        let mut buf = [0; MPU_ACC_DATA_SIZE];
+        self.sensor.get().read_from_reg(MPU_ACCEL_XOUT_H, &mut buf, MPU_ACC_DATA_SIZE as u8);
+        self.sensor.get().deselect();
+        self.convert_acc_vals(buf)
+    }
+
+    fn convert_acc_vals(&self, vals: [u8; MPU_ACC_DATA_SIZE]) -> [i16; MPU_ACC_NUM_AXES]{
+        let mut converted_vals = [0; MPU_ACC_NUM_AXES];
+        for i in 0..MPU_ACC_NUM_AXES {
+            let index = i * 2;
+            let raw = (vals[index+1] as i16) << 8 | vals[index] as i16;
+            converted_vals[i] = raw / 2048;
+        }
+        converted_vals
+    }
+
+    unsafe fn clear_interrupts(&self) {
+        let mut buf = [0];
+        self.sensor.get().read_from_reg(MPU_INT_STATUS, &mut buf, 1);
+    }
+
+    unsafe fn configure_pins(&self) {
+        // Configure interrupt pin
+        gpio::PORT[MPU_INT_IOID as usize].make_input();
+        ioc::IOCFG[MPU_INT_IOID as usize].set_input_mode(hil::gpio::InputMode::PullDown);
+        ioc::IOCFG[MPU_INT_IOID as usize].set_hyst(true);
+        // Configure power pin
+        gpio::PORT[MPU_POWER_IOID as usize].make_output();
+        ioc::IOCFG[MPU_POWER_IOID as usize].set_drv_strength(ioc::CurrentMode::Current4mA, ioc::DriveStrength::Max);
+        gpio::PORT[MPU_POWER_IOID as usize].clear();
+
+    }
+
+    pub unsafe fn configure(&self) {
+        self.sensor.get().select();
+        self.configure_pins();
+        self.power_up();
+        self.clear_interrupts();
+        self.sensor.get().deselect();
     }
 }
