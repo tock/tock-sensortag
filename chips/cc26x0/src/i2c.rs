@@ -229,7 +229,6 @@ impl I2C {
             success = self.status();
             if success {
                 data[i as usize] = self.master_get_data() as u8;
-                debug!("Data i: {}", data[i as usize]);
                 self.master_control(I2C_MASTER_CMD_BURST_RECEIVE_CONT);
                 i += 1;
             }
