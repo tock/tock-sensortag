@@ -19,7 +19,26 @@ pub const IOC_I2C_MSSDA: u32 = 0xD;
 pub const IOC_I2C_MSSCL: u32 = 0xE;
 
 pub const IOC_IOMODE_OPEN_DRAIN_NORMAL: u32 = 0x4000000;
+pub const IOC_HYST_ENABLE: u32 = 0x40000000;
 pub const IOC_IOPULL_UP: u32 = 0x4000;
+
+pub const IOC_CURRENT_MODE: u32 = 0xC00;
+pub const IOC_DRIVE_STRENGTH: u32 = 0x300;
+
+pub enum CurrentMode {
+    Current2mA = 0x0,
+    Current4mA = 0x400,
+    Current8mA = 0x800,
+}
+
+pub enum DriveStrength {
+    Auto = 0x0,
+    Max = 0x300,
+    Med = 0x200,
+    Min = 0x100,
+}
+
+
 
 #[repr(C)]
 pub struct IocRegisters {
@@ -119,6 +138,26 @@ impl IocfgPin {
         };
 
         pin_ioc.modify(field);
+    }
+
+    pub fn set_hyst(&self, enable: bool) {
+        let regs: &IocRegisters = unsafe { &*IOC_BASE };
+        let pin_ioc = &regs.iocfg[self.pin];
+
+        if enable {
+            pin_ioc.set(pin_ioc.get() | IOC_HYST_ENABLE);
+        }
+        else {
+            pin_ioc.set(pin_ioc.get() & !IOC_HYST_ENABLE);
+        }
+    }
+
+    pub fn set_drv_strength(&self, current: CurrentMode, strength: DriveStrength) {
+        let regs: &IocRegisters = unsafe { &*IOC_BASE };
+        let pin_ioc = &regs.iocfg[self.pin];
+
+        pin_ioc.set(pin_ioc.get() & !IOC_DRIVE_STRENGTH & !IOC_CURRENT_MODE);
+        pin_ioc.set(pin_ioc.get() | (current as u32) | (strength as u32));
     }
 
     pub fn enable_output(&self) {
