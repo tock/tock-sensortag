@@ -1,4 +1,5 @@
 use cortexm3::{generic_isr, nvic, systick_handler, SVC_Handler};
+use cc26xx::setup;
 
 extern "C" {
     // Symbols defined in the linker file
@@ -127,5 +128,8 @@ pub unsafe extern "C" fn init() {
             _old
         } = 0u32;
     }
+
+    setup::perform();
+
     nvic::enable_all();
 }
