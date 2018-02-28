@@ -15,13 +15,11 @@
 //!
 //!
 
-use kernel::common::VolatileCell;
-
-use cc26xx::prcm;
-use cc26xx::osc;
-
 // RFC Commands are located at the bottom
 use self::rfc_commands::*;
+use cc26xx::prcm;
+use cc26xx::rtc;
+use kernel::common::VolatileCell;
 
 /*
     RFC commands can be of two types:
@@ -62,7 +60,7 @@ pub trait RfcCommand {
             ----------------------------------------------------------------
     */
     fn immediate_command(&self) -> *const Self {
-       self as *const Self
+        self as *const Self
     }
 }
 
@@ -97,15 +95,16 @@ const RFC_PWR_BASE: *mut VolatileCell<u32> = 0x4004_0000 as *mut VolatileCell<u3
 /*
     RFC Immediate commands
 */
-//const RFC_CMD0: u16 = 0x607;
-const RFC_PING: u16 = 0x0406;
+const RFC_CMD0: u16 = 0x607;
+const RFC_PING: u16 = 0x406;
+const RFC_BUS_REQUEST: u16 = 0x40E;
 //const RFC_START_RAT_TIMER: u16 = 0x080A;
 
 /*
     Power masks in order to enable certain clocks in the RFC
 */
 const RFC_PWR_RFC: u32 = 0x01; // Main module
-// Command and Packet Engine (CPE)
+                               // Command and Packet Engine (CPE)
 const RFC_PWR_CPE: u32 = 0x02;
 const RFC_PWR_CPERAM: u32 = 0x04;
 // Modem module
@@ -147,14 +146,12 @@ impl RFCore {
     }
 
     pub fn enable(&self) {
-        osc::OSCILLATOR_CONTROL.switch_to_hf_xosc();
-
         // Enable power & clock
         prcm::Power::enable_domain(prcm::PowerDomain::RFC);
         prcm::Clock::enable_rfc();
 
         // Wait for the power domain to be up
-        while !prcm::Power::is_enabled(prcm::PowerDomain::RFC) { }
+        while !prcm::Power::is_enabled(prcm::PowerDomain::RFC) {}
 
         let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
 
@@ -165,29 +162,22 @@ impl RFCore {
         // Setup clocks and allow CPE to boot
         let pwr_ctl: &VolatileCell<u32> = unsafe { &*self.pwr_ctl };
         pwr_ctl.set(
-            RFC_PWR_RFC
-                | RFC_PWR_CPE | RFC_PWR_CPERAM
-                | RFC_PWR_FSCA
-                | RFC_PWR_PHA
-                | RFC_PWR_RAT
-                | RFC_PWR_RFE | RFC_PWR_RFERAM
-                | RFC_PWR_MDM | RFC_PWR_MDMRAM
+            RFC_PWR_RFC | RFC_PWR_CPE | RFC_PWR_CPERAM | RFC_PWR_FSCA | RFC_PWR_PHA | RFC_PWR_RAT
+                | RFC_PWR_RFE | RFC_PWR_RFERAM | RFC_PWR_MDM | RFC_PWR_MDMRAM,
         );
 
         // Turn on additional clocks
         bell_regs.rf_ack_interrupt_flag.set(0);
+        self.send_and_wait(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40));
+
+        // Request the bus
+        self.send_and_wait(&DirectCommand::new(RFC_BUS_REQUEST, 1));
 
         // Send a ping command to verify that the core is ready and alive
-        let ping = DirectCommand::new(RFC_PING, 0);
-        self.send(&ping);
-
-        match self.wait_for(&ping) {
-            RfcResult::Error(errno) => panic!("Tried to enable RFC but an error occurred, status: {:x}", errno),
-            _ => ()
-        }
+        self.send_and_wait(&DirectCommand::new(RFC_PING, 0));
     }
 
-    pub fn setup(&self) {
+    pub fn setup(&self, mode: u8, reg_override: u32) {
         let setup_cmd = RfcCommandRadioSetup {
             command_no: 0x0802,
             status: 0,
@@ -199,24 +189,61 @@ impl RFCore {
                 cond.set_rule(0x01); // COND_NEVER
                 cond
             },
-            mode: 0,
+            mode: mode,
             lo_divider: 0,
             config: {
                 let mut cfg = RfcSetupConfig(0);
-                cfg.set_frontend_mode(0x01);
-                cfg.set_bias_mode(true); // External - might need to change
+                cfg.set_frontend_mode(0); // Differential mode
+                cfg.set_bias_mode(false); // Internal bias
                 cfg
             },
             tx_power: 0x9330,
-            reg_override: 0, //&BLE_OVERRIDES as *const [u32],
+            reg_override: reg_override,
         };
 
         self.send(&setup_cmd);
 
         // Wait for the cmd to be done
         match self.wait_for(&setup_cmd) {
-            RfcResult::Error(status) => debug_verbose!("Error occurred during setup: 0x{:x}\r", status),
-            RfcResult::Ok => debug_verbose!("Setup successful!!\r")
+            RfcResult::Error(status) => panic!("Error occurred during setup: 0x{:x}\r", status),
+            RfcResult::Ok => debug_verbose!("Setup successful!\r"),
+        }
+    }
+
+    pub fn start_rat(&self) {
+        unsafe {
+            rtc::RTC.set_upd_en(true);
+        }
+
+        let cmd = RfcCommandStartRat {
+            command_no: 0x080A,
+            status: 0,
+            next_op: 0,
+            start_time: 0,
+            start_trigger: 0,
+            condition: {
+                let mut cond = RfcCondition(0);
+                cond.set_rule(0x01); // COND_NEVER
+                cond
+            },
+            _reserved: 0,
+            rat0: 0,
+        };
+
+        self.send(&cmd);
+
+        // Wait for the cmd to be done
+        match self.wait_for(&cmd) {
+            RfcResult::Error(status) => panic!("Error occurred during RAT start: 0x{:x}\r", status),
+            RfcResult::Ok => debug_verbose!("RAT started.\r"),
+        }
+    }
+
+    pub fn send_and_wait<C: RfcCommand>(&self, cmd: &C) {
+        self.send(cmd);
+        match self.wait_for(cmd) {
+            RfcResult::Error(status) => panic!("Error occurred during send_and_wait cmdsta=0x{:x}\r", status),
+            RfcResult::Ok => (),
         }
     }
 
@@ -233,12 +260,17 @@ impl RFCore {
 
         let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
 
-        while bell_regs.command.get() != 0 { }
+        while bell_regs.command.get() != 0 {}
 
         // Set the command
         bell_regs.command.set(command);
 
         debug_verbose!("Radio command pending: 0x{:x}\r", command);
+
+        // Wait for the ACK
+        //while(!HWREG(RFC_DBELL_BASE + RFC_DBELL_O_RFACKIFG));
+        while bell_regs.rf_ack_interrupt_flag.get() == 0 { }
+        bell_regs.rf_ack_interrupt_flag.set(0);
 
         RfcResult::Ok
     }
@@ -259,32 +291,41 @@ impl RFCore {
                 while timeout < MAX_TIMEOUT {
                     status = bell_regs.command_status.get();
                     if (status & 0xFF) == 0x01 {
-                        return RfcResult::Ok
+                        return RfcResult::Ok;
                     }
 
                     timeout += 1;
                 }
-            },
+            }
 
             /*
                 Immediate/Radio operations does not return directly, and can take a while to
                 complete depending on the complexity of the command. The result is then directly
                 written to the status register of the command sent.
             */
-            RfcCommandType::Immediate => {
-                while timeout < MAX_TIMEOUT {
-                    status = *cmd.command_status() as u32;
-                    if (status & 0x0C00) == 0x0400 {
-                        return RfcResult::Ok
-                    }
-
-                    timeout += 1;
+            RfcCommandType::Immediate => while timeout < MAX_TIMEOUT {
+                status = *cmd.command_status() as u32;
+                if (status & 0x0C00) == 0x0400 {
+                    debug_verbose!("Got status 0x{:x}\r", status);
+                    return RfcResult::Ok;
                 }
-            }
+
+                timeout += 1;
+            },
         }
 
         // If we arrive here, an error occurred above (timed out)
         return RfcResult::Error(status);
+    }
+
+    pub fn get_status(&self) -> u32 {
+        let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
+        bell_regs.command_status.get()
+    }
+
+    pub fn get_command(&self) -> u32 {
+        let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
+        bell_regs.command.get()
     }
 
     pub fn handle_interrupt(&self, int: RfcInterrupt) {
@@ -296,7 +337,7 @@ impl RFCore {
 
                 debug_verbose!("CmdAck handled\r");
             }
-            _ => ()
+            _ => (),
         }
     }
 }
@@ -320,9 +361,15 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for DirectCommand {
-        fn command_type(&self) -> RfcCommandType { RfcCommandType::Direct }
-        fn command_id(&self) -> &u16 { &self.command_id }
-        fn command_status(&self) -> &u16 { &self.parameters }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Direct
+        }
+        fn command_id(&self) -> &u16 {
+            &self.command_id
+        }
+        fn command_status(&self) -> &u16 {
+            &self.parameters
+        }
     }
 
     /* Basic immediate command */
@@ -339,9 +386,15 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for ImmediateCommand {
-        fn command_type(&self) -> RfcCommandType { RfcCommandType::Immediate }
-        fn command_id(&self) -> &u16 { &self.command_no }
-        fn command_status(&self) -> &u16 { &self.status }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
+        }
+        fn command_id(&self) -> &u16 {
+            &self.command_no
+        }
+        fn command_status(&self) -> &u16 {
+            &self.status
+        }
     }
 
     /* In order to properly setup the radio mode (e.g BLE or IEEE) */
@@ -361,9 +414,39 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for RfcCommandRadioSetup {
-        fn command_type(&self) -> RfcCommandType { RfcCommandType::Immediate }
-        fn command_id(&self) -> &u16 { &self.command_no }
-        fn command_status(&self) -> &u16 { &self.status }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
+        }
+        fn command_id(&self) -> &u16 {
+            &self.command_no
+        }
+        fn command_status(&self) -> &u16 {
+            &self.status
+        }
+    }
+
+    #[repr(C)]
+    pub struct RfcCommandStartRat {
+        pub command_no: u16,
+        pub status: u16,
+        pub next_op: u32,
+        pub start_time: u32,
+        pub start_trigger: u8,
+        pub condition: RfcCondition,
+        pub _reserved: u16,
+        pub rat0: u32,
+    }
+
+    impl RfcCommand for RfcCommandStartRat {
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
+        }
+        fn command_id(&self) -> &u16 {
+            &self.command_no
+        }
+        fn command_status(&self) -> &u16 {
+            &self.status
+        }
     }
 
     /* Bitfields used by many commands */
@@ -391,7 +474,7 @@ pub mod rfc_commands {
         impl Debug;
         pub _frontend_mode, set_frontend_mode: 2, 0;
         pub _bias_mode, set_bias_mode: 3;
-        pub _analog_cfg_mode, _set_analog_config_mode: 10, 4;
-        pub _no_fs_powerup, _set_no_fs_powerup: 11;
+        pub _analog_cfg_mode, _set_analog_config_mode: 9, 4;
+        pub _no_fs_powerup, _set_no_fs_powerup: 10;
     }
 }
