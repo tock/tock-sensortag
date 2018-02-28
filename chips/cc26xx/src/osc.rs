@@ -84,6 +84,7 @@ impl Oscillator {
         aux::AUX_CTL.activate_clock(aux::AuxClock::Semaphores);
     }
 
+    #[allow(unused)]
     pub fn set_xtal_to_24mhz(&self) {
         self.configure();
 
