@@ -127,6 +127,15 @@ impl Rtc {
     pub fn set_client(&self, client: &'static time::Client) {
         self.callback.set(Some(client));
     }
+
+    pub fn set_upd_en(&self, value: bool) {
+        let regs: &RtcRegisters = unsafe { &*self.regs };
+        if value {
+            regs.ctl.set(regs.ctl.get() | 0x02);
+        } else {
+            regs.ctl.set(regs.ctl.get() & !0x02);
+        }
+    }
 }
 
 impl Time for Rtc {
