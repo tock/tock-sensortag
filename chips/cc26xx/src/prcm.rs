@@ -68,6 +68,10 @@ struct PrcmRegisters {
     _reserved8: [ReadOnly<u8>; 0x14],
 
     pub pd_stat1: ReadOnly<u32, PowerDomainStatus1::Register>,
+
+    _reserved9: [ReadOnly<u8>; 0x38],
+
+    pub rfc_mode_sel: ReadWrite<u32>,
 }
 
 register_bitfields![
@@ -232,4 +236,9 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.i2c_clk_gate_run.is_set(ClockGate::CLK_EN)
     }
+}
+
+pub fn rf_mode_sel(mode: u32) {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+    regs.rfc_mode_sel.set(mode);
 }
