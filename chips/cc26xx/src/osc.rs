@@ -2,9 +2,9 @@
 //!
 //!
 
-use kernel::common::VolatileCell;
-
 use aux;
+use setup::oscfh;
+use kernel::common::VolatileCell;
 
 /*
     The cc26xx chips have two clock sources:
@@ -37,6 +37,9 @@ pub const HF_XOSC: u8 = 0x01;
 pub const HF_STAT0_MASK: u32 = 0x10000000;
 pub const LF_STAT0_MASK: u32 = 0x60000000;
 
+pub const STAT0_PENDING_HF_SWITCH: u32 = 0x01;
+pub const CTL0_ALLOW_HF_SWITCH: u32 = 0x10000;
+
 struct DdiRegisters {
     ctl0: VolatileCell<u32>,
     _ctl1: VolatileCell<u32>,
@@ -62,7 +65,8 @@ struct DdiRegisters {
 }
 
 pub struct Oscillator {
-    regs: *const DdiRegisters,
+    r_regs: *const DdiRegisters,
+    wr_regs: *const DdiRegisters,
 }
 
 pub const OSCILLATOR_CONTROL: Oscillator = Oscillator::new();
@@ -70,7 +74,8 @@ pub const OSCILLATOR_CONTROL: Oscillator = Oscillator::new();
 impl Oscillator {
     pub const fn new() -> Oscillator {
         Oscillator {
-            regs: 0x400C_A000 as *const DdiRegisters,
+            r_regs: 0x400C_A000 as *const DdiRegisters,
+            wr_regs: 0x400C_A040 as *const DdiRegisters,
         }
     }
 
@@ -79,7 +84,15 @@ impl Oscillator {
         aux::AUX_CTL.activate_clock(aux::AuxClock::Semaphores);
     }
 
-    pub fn switch_to_hf_xosc(&self) {
+    pub fn set_xtal_to_24mhz(&self) {
+        self.configure();
+
+        let regs: &DdiRegisters = unsafe { &*self.r_regs };
+        let wr_regs: &DdiRegisters = unsafe { &*self.wr_regs };
+        wr_regs.ctl0.set(regs.ctl0.get() | (1 << 31));
+    }
+
+    pub fn request_switch_to_hf_xosc(&self) {
         self.configure();
 
         if self.clock_source_get(ClockType::HF) != HF_XOSC {
@@ -87,34 +100,37 @@ impl Oscillator {
         }
     }
 
+    pub fn switch_to_hf_xosc(&self) {
+        unsafe {
+            oscfh::source_switch();
+        }
+    }
+
     pub fn clock_source_get(&self, clock: ClockType) -> u8 {
-        let regs: &DdiRegisters = unsafe { &*self.regs };
+        let regs: &DdiRegisters = unsafe { &*self.r_regs };
         match clock {
-            ClockType::LF => {
-                ((regs.stat0.get() & LF_STAT0_MASK) >> 29) as u8
-            },
-            ClockType::HF => {
-                ((regs.stat0.get() & HF_STAT0_MASK) >> 28) as u8
-            },
+            ClockType::LF => ((regs.stat0.get() & LF_STAT0_MASK) >> 29) as u8,
+            ClockType::HF => ((regs.stat0.get() & HF_STAT0_MASK) >> 28) as u8,
         }
     }
 
     pub fn clock_source_set(&self, clock: ClockType, src: u8) {
-        let regs: &DdiRegisters = unsafe { &*self.regs };
+        let regs: &DdiRegisters = unsafe { &*self.r_regs };
+        let wr_regs: &DdiRegisters = unsafe { &*self.wr_regs };
         match clock {
             ClockType::LF => {
                 // Reset
-                regs.ctl0.set(regs.ctl0.get() & !0xC);
+                wr_regs.ctl0.set(regs.ctl0.get() & !0xC);
                 // Set
                 let mask = ((src & 0x03) << 2) as u32;
-                regs.ctl0.set(regs.ctl0.get() | mask);
-            },
+                wr_regs.ctl0.set(regs.ctl0.get() | mask);
+            }
             ClockType::HF => {
                 // Reset
-                regs.ctl0.set(regs.ctl0.get() & !0x1);
+                wr_regs.ctl0.set(regs.ctl0.get() & !0x1);
                 // Set
                 let mask = (src & 0x01) as u32;
-                regs.ctl0.set(regs.ctl0.get() | mask);
+                wr_regs.ctl0.set(regs.ctl0.get() | mask);
             }
         }
     }
