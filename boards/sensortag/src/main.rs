@@ -5,15 +5,16 @@
 extern crate capsules;
 extern crate compiler_builtins;
 
-extern crate cc26xx;
 extern crate cc26x0;
+extern crate cc26xx;
 
 #[allow(unused_imports)]
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::aon;
 use cc26x0::radio;
+use cc26xx::aon;
+use cc26xx::osc;
 
 #[macro_use]
 pub mod io;
@@ -198,22 +199,7 @@ pub unsafe fn reset_handler() {
     );
     cc26xx::trng::TRNG.set_client(rng);
 
-    radio::RFC.enable();
-    for _i in 0..0x2FFFFF {
-        asm!("nop");
-    }
-    radio::RFC.setup();
-    /*match radio::RFC.setup() {
-        radio::rfc::RfcResult::Error(status) => panic!("Unable to setup radio, returned status 0x{:x}", status),
-        _ => ()
-    }*/
-
-    /*loop {
-        //cc26x0::radio::RFC.perform_advertise_round();
-        for _i in 0..0x6FFFFF {
-            asm!("nop");
-        }
-    }*/
+    radio::BLE.power_up();
 
     let sensortag = Platform {
         gpio,
