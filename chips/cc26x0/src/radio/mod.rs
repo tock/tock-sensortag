@@ -5,6 +5,7 @@
 //! when traffic is detected, among other things.
 
 pub mod rfc;
+pub mod ble;
 
 pub const RFC: rfc::RFCore = rfc::RFCore::new();
-
+pub const BLE: ble::Ble<'static> = ble::Ble::new(&RFC);
