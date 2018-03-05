@@ -19,7 +19,7 @@ static mut BLE_PARAMS_BUF: [u32; 32] = [0; 32];
 static mut PAYLOAD: [u8; 64] = [0; 64];
 
 // TODO(cpluss): change this to randomised generated
-static mut DEVICE_ADDRESS: [u8; 6] = [0xf1, 0x10, 0x20, 0x34, 0x56, 0xf1];
+static mut DEVICE_ADDRESS: [u8; 6] = [0xf0, 0x10, 0x20, 0x34, 0x56, 0xf0];
 
 pub struct Ble<'a> {
     rfc: &'a rfc::RFCore,
@@ -69,7 +69,8 @@ impl<'a> Ble<'a> {
 
             PAYLOAD[0] = 0x02; // 2 bytes
             PAYLOAD[1] = 0x01; // ADV TYPE DEVINFO
-            PAYLOAD[2] = 0x1A; // LE general discoverable + BR/EDR
+            PAYLOAD[2] = 0x02; // LE General Discoverable Mode
+            //PAYLOAD[2] = 0x1A; // LE general discoverable + BR/EDR
             PAYLOAD[3] = (name.len() + 1) as u8;
 
             PAYLOAD[4] = 0x09; // ADV TYPE NAME

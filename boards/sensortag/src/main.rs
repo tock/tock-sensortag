@@ -200,6 +200,12 @@ pub unsafe fn reset_handler() {
     cc26xx::trng::TRNG.set_client(rng);
 
     radio::BLE.power_up();
+    loop {
+        radio::BLE.advertise();
+        for _i in 0..960000 {
+            asm!("nop");
+        }
+    }
 
     let sensortag = Platform {
         gpio,
