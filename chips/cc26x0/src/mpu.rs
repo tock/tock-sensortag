@@ -1,5 +1,3 @@
-#![feature(lang_items, compiler_builtins_lib, asm)]
-
 use kernel::hil::gpio::Pin;
 use kernel::hil;
 use cc26xx::ioc;
