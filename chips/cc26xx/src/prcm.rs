@@ -159,7 +159,10 @@ impl Power {
         match domain {
             PowerDomain::Peripherals => regs.pd_stat0_periph.is_set(PowerDomainSingle::ON),
             PowerDomain::Serial => regs.pd_stat0_serial.is_set(PowerDomainSingle::ON),
-            PowerDomain::RFC => regs.pd_stat1.is_set(PowerDomainStatus1::RFC_ON),
+            PowerDomain::RFC => {
+                regs.pd_stat1.is_set(PowerDomainStatus1::RFC_ON)
+                && regs.pd_stat0.is_set(PowerDomainStatus0::RFC_ON)
+            },
             _ => false,
         }
     }
