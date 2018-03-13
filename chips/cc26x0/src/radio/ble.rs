@@ -1,6 +1,10 @@
 //! BLE Controller
 //!     Manages bluetooth.
+//!
 
+pub extern crate nrf5x;
+
+use core::cell::Cell;
 use self::ble_commands::*;
 use cc26xx::{osc,prcm};
 use radio::rfc::{self, rfc_commands};
@@ -15,23 +19,32 @@ static mut BLE_OVERRIDES: [u32; 7] = [
     0xFFFFFFFF /* End of override list */,
 ];
 
+/*
+    We need to use static buffers in order to make them
+    constantly accessible by the radio MCU (we need to assure that they
+    won't be deallocated).
+*/
 static mut BLE_PARAMS_BUF: [u32; 32] = [0; 32];
-static mut PAYLOAD: [u8; 64] = [0; 64];
+static mut BLE_ADV_PAYLOAD: [u8; 64] = [0; 64];
+static mut BLE_ADV_PAYLOAD_LEN: u8 = 0;
+static mut PACKET_BUF: [u8; 128] = [0; 128];
+static mut DEVICE_ADDRESS: [u8; 6] = [0; 6];
 
-// TODO(cpluss): change this to randomised generated
-static mut DEVICE_ADDRESS: [u8; 6] = [0xf0, 0x10, 0x20, 0x34, 0x56, 0xf0];
-
-pub struct Ble<'a> {
-    rfc: &'a rfc::RFCore,
+pub struct Ble {
+    rfc: &'static rfc::RFCore,
+    rx_client: Cell<Option<&'static nrf5x::ble_advertising_hil::RxClient>>,
+    tx_client: Cell<Option<&'static nrf5x::ble_advertising_hil::TxClient>>,
 }
 
 /* BLE RFC Commands */
 const RFC_BLE_ADVERTISE: u16 = 0x1805;
 
-impl<'a> Ble<'a> {
-    pub const fn new(rfc: &'a rfc::RFCore) -> Ble<'a> {
+impl Ble {
+    pub const fn new(rfc: &'static rfc::RFCore) -> Ble {
         Ble {
             rfc: rfc,
+            rx_client: Cell::new(None),
+            tx_client: Cell::new(None),
         }
     }
 
@@ -54,112 +67,119 @@ impl<'a> Ble<'a> {
 
         unsafe {
             let reg_overrides: u32 = (&BLE_OVERRIDES[0] as *const u32) as u32;
-            //(&self.ble_overrides as *const BleOverrides) as u32;
-            self.rfc.setup(0x00, reg_overrides); // Mode 0 = BLE
+            // Mode 0 = BLE
+            self.rfc.setup(0x00, reg_overrides);
         }
     }
 
-    pub fn advertise(&self) {
-        let name = "lol det funkar";
+    /*
+        The payload is assembled be the Cortex-M0 radio MCU. We need to extract
+        parts of the payload to correctly propagate them.
+    */
+    unsafe fn replace_adv_payload_buffer(&self, buf: &'static mut [u8], len: usize)
+        -> &'static mut [u8] {
+        // Extract the device address
+        for (i, a) in buf.as_ref()[2..8].iter().enumerate() {
+            DEVICE_ADDRESS[i] = *a;
+        }
+
+        // Copy the rest of the payload
+        for (i, c) in buf.as_ref()[8..len].iter().enumerate() {
+            BLE_ADV_PAYLOAD[i] = *c;
+        }
+
+        BLE_ADV_PAYLOAD_LEN = (len - 8) as u8;
+
+        buf
+    }
+
+    pub fn advertise(&self, radio_channel: RadioChannel) {
+        let channel = match radio_channel {
+            RadioChannel::AdvertisingChannel37 => 37,
+            RadioChannel::AdvertisingChannel38 => 38,
+            RadioChannel::AdvertisingChannel39 => 39,
+            _ => panic!("Tried to advertise on a communication channel.\r")
+        };
 
         unsafe {
-            for i in 0..PAYLOAD.len() {
-                PAYLOAD[i] = 0;
+            for i in 0..BLE_PARAMS_BUF.len() {
+                BLE_PARAMS_BUF[i] = 0;
+            }
+            for i in 0..PACKET_BUF.len() {
+                PACKET_BUF[i] = 0;
             }
 
-            PAYLOAD[0] = 0x02; // 2 bytes
-            PAYLOAD[1] = 0x01; // ADV TYPE DEVINFO
-            PAYLOAD[2] = 0x02; // LE General Discoverable Mode
-            //PAYLOAD[2] = 0x1A; // LE general discoverable + BR/EDR
-            PAYLOAD[3] = (name.len() + 1) as u8;
+            let params: &mut BleAdvertiseParams = &mut *(BLE_PARAMS_BUF.as_mut_ptr() as *mut BleAdvertiseParams);
 
-            PAYLOAD[4] = 0x09; // ADV TYPE NAME
-            let mut p = 5;
-            for c in name.chars() {
-                PAYLOAD[p] = c as u8;
-                p = p + 1;
-            }
+            params.device_address = &mut DEVICE_ADDRESS[0] as *mut u8;
+            params.adv_len = BLE_ADV_PAYLOAD_LEN;
+            params.adv_data = BLE_ADV_PAYLOAD.as_ptr() as u32;
+            params.end_time = 0;
+            params.end_trigger = 1;
 
-            for channel in 37..40 {
-                self.advertise_on(channel, &mut PAYLOAD, p as u8);
-            }
-        }
-    }
+            let cmd: &mut BleAdvertise = &mut *(PACKET_BUF.as_mut_ptr() as *mut BleAdvertise);
 
-    #[inline(never)]
-    #[no_mangle]
-    pub unsafe fn advertise_on(&self, channel: u8, payload: &mut [u8], payload_len: u8) {
-        for i in 0..BLE_PARAMS_BUF.len() {
-            BLE_PARAMS_BUF[i] = 0;
-        }
-
-        let params: &mut BleAdvertiseParams =
-            &mut *(::core::mem::transmute::<*mut u32, *mut BleAdvertiseParams>
-                (&mut BLE_PARAMS_BUF[0] as *mut u32));
-
-        params.device_address = &mut DEVICE_ADDRESS[0] as *mut u8;
-        params.adv_len = payload_len;
-        params.adv_data = payload[0] as *const u8;
-        params.end_time = 1;
-        params.end_trigger = 1;
-
-        /*let params = BleAdvertiseParams {
-            rx_queue: 0, // pointer to receive queue
-            rx_config: 0,
-            adv_config: 0,
-
-            adv_len: payload_len,
-            scan_rsp_len: 0,
-
-            adv_data: payload as *mut [u8],
-            scan_rsp_data: 0,
-            device_address: &DEVICE_ADDRESS as *mut [u8],
-
-            white_list: 0,
-
-            __dummy0: 0,
-            __dummy1: 0,
-
-            end_trigger: 0,
-            end_time: 0,
-        };*/
-
-        let cmd = BleAdvertise {
-            command_no: RFC_BLE_ADVERTISE,
-            status: 0,
-            p_nextop: 0,
-            ratmr: 0,
-            start_trigger: 0,
-            condition: {
+            cmd.command_no = RFC_BLE_ADVERTISE;
+            cmd.condition = {
                 let mut cnd = rfc_commands::RfcCondition(0);
                 cnd.set_rule(1); // COND_NEVER
                 cnd
-            },
-
-            channel: channel,
-            whitening: {
+            };
+            cmd.channel = channel;
+            cmd.whitening = {
                 let mut wht = BleWhitening(0);
-                wht.set_override(false);
-                wht.set_init(0);
+                wht.set_override(true);
+                wht.set_init(0x51);
                 wht
-            },
+            };
+            cmd.params = BLE_PARAMS_BUF.as_ptr() as u32;
 
-            params: params as *const BleAdvertiseParams,
-            output: 0,
-        };
-
-        debug_verbose!("Advertising with payload 0x{:x}, len={}\r", (&payload[0] as *const u8) as u32, payload_len);
-
-        // Queue the advertisement command
-        self.rfc.send(&cmd);
-
-        match self.rfc.wait_for(&cmd) {
-            rfc::RfcResult::Error(status) => panic!(
-                "Error during advertisement on channel={}, status=0x{:x}, cmdsta=0x{:x}, cmdr=0x{:x}\r",
-                channel, status, self.rfc.get_status(), self.rfc.get_command()
-            ),
-            rfc::RfcResult::Ok => debug_verbose!("Sent advertisement on channel {}\r", channel),
+            // Queue the advertisement command
+            self.rfc.send(cmd);
         }
+    }
+}
+
+impl rfc::RFCoreClient for Ble {
+    fn command_done(&self) {
+        self.tx_client
+            .get()
+            .map(|client| client.transmit_event(kernel::ReturnCode::SUCCESS));
+    }
+}
+
+use self::nrf5x::ble_advertising_hil::RadioChannel;
+
+impl nrf5x::ble_advertising_hil::BleAdvertisementDriver for Ble {
+    fn transmit_advertisement(
+        &self,
+        buf: &'static mut [u8],
+        len: usize,
+        channel: RadioChannel,
+    ) -> &'static mut [u8] {
+        let res = unsafe { self.replace_adv_payload_buffer(buf, len) };
+        self.advertise(channel);
+        res
+    }
+
+    fn receive_advertisement(&self, _channel: RadioChannel) {
+    }
+
+    fn set_receive_client(&self, client: &'static nrf5x::ble_advertising_hil::RxClient) {
+        self.rx_client.set(Some(client));
+    }
+
+    fn set_transmit_client(&self, client: &'static nrf5x::ble_advertising_hil::TxClient) {
+        self.tx_client.set(Some(client));
+    }
+}
+
+use kernel;
+use radio::ble::ble_commands::BleAdvertise;
+
+impl nrf5x::ble_advertising_hil::BleConfig for Ble {
+    fn set_tx_power(&self, _tx_power: u8) -> kernel::ReturnCode {
+        kernel::ReturnCode::SUCCESS
     }
 }
 
@@ -179,7 +199,7 @@ pub mod ble_commands {
         pub channel: u8,
         pub whitening: BleWhitening,
 
-        pub params: *const BleAdvertiseParams,
+        pub params: u32,
         pub output: u32,
     }
 
@@ -192,7 +212,7 @@ pub mod ble_commands {
         pub adv_len: u8,
         pub scan_rsp_len: u8,
 
-        pub adv_data: *const u8,
+        pub adv_data: u32,
         pub scan_rsp_data: u32,
         pub device_address: *const u8,
 
@@ -206,14 +226,16 @@ pub mod ble_commands {
     }
 
     impl RfcCommand for BleAdvertise {
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
         fn command_id(&self) -> &u16 {
             &self.command_no
         }
+
         fn command_status(&self) -> &u16 {
             &self.status
+        }
+
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
         }
     }
 

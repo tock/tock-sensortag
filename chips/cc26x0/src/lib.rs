@@ -4,7 +4,7 @@
 #![crate_type = "rlib"]
 extern crate cortexm3;
 #[allow(unused_imports)]
-#[macro_use(debug,debug_verbose)]
+#[macro_use]
 extern crate kernel;
 extern crate cc26xx;
 

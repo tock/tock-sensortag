@@ -2,7 +2,7 @@
 #![no_std]
 #![crate_name = "cc26xx"]
 #![crate_type = "rlib"]
-extern crate bitfield;
+
 #[allow(unused_imports)]
 #[macro_use]
 extern crate kernel;

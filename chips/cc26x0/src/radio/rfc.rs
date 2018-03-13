@@ -19,6 +19,9 @@
 use self::rfc_commands::*;
 use cc26xx::prcm;
 use cc26xx::rtc;
+use core::cell::Cell;
+
+use kernel::common::regs::{ReadOnly, ReadWrite};
 use kernel::common::VolatileCell;
 
 /*
@@ -66,28 +69,60 @@ pub trait RfcCommand {
 
 #[repr(C)]
 pub struct RfcBellRegisters {
-    command: VolatileCell<u32>,
-    command_status: VolatileCell<u32>,
-    _rf_hw_interrupt_flags: VolatileCell<u32>,
-    _rf_hw_interrupt_enable: VolatileCell<u32>,
+    command: ReadWrite<u32>,
+    command_status: ReadOnly<u32>,
+    _rf_hw_interrupt_flags: ReadOnly<u32>,
+    _rf_hw_interrupt_enable: ReadOnly<u32>,
 
-    rf_cpe_interrupt_flags: VolatileCell<u32>,
-    rf_cpe_interrupt_enable: VolatileCell<u32>,
-    _rf_cpe_interrupt_vector_sel: VolatileCell<u32>,
-    rf_ack_interrupt_flag: VolatileCell<u32>,
+    rf_cpe_interrupt_flags: ReadWrite<u32, RFCpeInterrupts::Register>,
+    rf_cpe_interrupt_enable: ReadWrite<u32, RFCpeInterrupts::Register>,
+    rf_cpe_interrupt_vector_sel: ReadWrite<u32, RFCpeInterrupts::Register>,
 
-    _sys_gpo_control: VolatileCell<u32>,
+    rf_ack_interrupt_flag: ReadWrite<u32, RFAckInterruptFlag::Register>,
+
+    _sys_gpo_control: ReadOnly<u32>,
 }
 
-/*const BLE_OVERRIDES: [u32; 7] = [
-    0x00364038, /* Synth: Set RTRIM (POTAILRESTRIM) to 6 */
-    0x000784A3, /* Synth: Set FREF = 3.43 MHz (24 MHz / 7) */
-    0xA47E0583, /* Synth: Set loop bandwidth after lock to 80 kHz (K2) */
-    0xEAE00603, /* Synth: Set loop bandwidth after lock to 80 kHz (K3, LSB) */
-    0x00010623, /* Synth: Set loop bandwidth after lock to 80 kHz (K3, MSB) */
-    0x00456088, /* Adjust AGC reference level */
-    0xFFFFFFFF, /* End of override list */
-];*/
+register_bitfields![
+    u32,
+    RFCpeInterrupts [
+        INTERNAL_ERROR      OFFSET(31) NUMBITS(1) [],
+        BOOT_DONE           OFFSET(30) NUMBITS(1) [],
+        MODULES_UNLOCKED    OFFSET(29) NUMBITS(1) [],
+        SYNTH_NO_LOCK       OFFSET(28) NUMBITS(1) [],
+        IRQ27               OFFSET(27) NUMBITS(1) [],
+        RX_ABORTED          OFFSET(26) NUMBITS(1) [],
+        RX_N_DATA_WRITTEN   OFFSET(25) NUMBITS(1) [],
+        RX_DATA_WRITTEN     OFFSET(24) NUMBITS(1) [],
+        RX_ENTRY_DONE       OFFSET(23) NUMBITS(1) [],
+        RX_BUF_FULL         OFFSET(22) NUMBITS(1) [],
+        RX_CTRL_ACK         OFFSET(21) NUMBITS(1) [],
+        RX_CTRL             OFFSET(20) NUMBITS(1) [],
+        RX_EMPTY            OFFSET(19) NUMBITS(1) [],
+        RX_IGNORED          OFFSET(18) NUMBITS(1) [],
+        RX_NOK              OFFSET(17) NUMBITS(1) [],
+        RX_OK               OFFSET(16) NUMBITS(1) [],
+        IRQ15               OFFSET(15) NUMBITS(1) [],
+        IRQ14               OFFSET(14) NUMBITS(1) [],
+        IRQ13               OFFSET(13) NUMBITS(1) [],
+        IRQ12               OFFSET(12) NUMBITS(1) [],
+        TX_BUFFER_CHANGED   OFFSET(11) NUMBITS(1) [],
+        TX_ENTRY_DONE       OFFSET(10) NUMBITS(1) [],
+        TX_RETRANS          OFFSET(9) NUMBITS(1) [],
+        TX_CTRL_ACK_ACK     OFFSET(8) NUMBITS(1) [],
+        TX_CTRL_ACK         OFFSET(7) NUMBITS(1) [],
+        TX_CTRL             OFFSET(6) NUMBITS(1) [],
+        TX_ACK              OFFSET(5) NUMBITS(1) [],
+        TX_DONE             OFFSET(4) NUMBITS(1) [],
+        LAST_FG_COMAND_DONE OFFSET(3) NUMBITS(1) [],
+        FG_COMMAND_DONE     OFFSET(2) NUMBITS(1) [],
+        LAST_COMMAND_DONE   OFFSET(1) NUMBITS(1) [],
+        COMMAND_DONE        OFFSET(0) NUMBITS(1) []
+    ],
+    RFAckInterruptFlag [
+        ACK OFFSET(0) NUMBITS(1) []
+    ]
+];
 
 const RFC_DBELL_BASE: *mut RfcBellRegisters = 0x4004_1000 as *mut RfcBellRegisters;
 const RFC_PWR_BASE: *mut VolatileCell<u32> = 0x4004_0000 as *mut VolatileCell<u32>;
@@ -98,7 +133,7 @@ const RFC_PWR_BASE: *mut VolatileCell<u32> = 0x4004_0000 as *mut VolatileCell<u3
 const RFC_CMD0: u16 = 0x607;
 const RFC_PING: u16 = 0x406;
 const RFC_BUS_REQUEST: u16 = 0x40E;
-//const RFC_START_RAT_TIMER: u16 = 0x080A;
+const RFC_START_RAT_TIMER: u16 = 0x080A;
 
 /*
     Power masks in order to enable certain clocks in the RFC
@@ -135,6 +170,15 @@ pub enum RfcInterrupt {
 pub struct RFCore {
     bell_regs: *mut RfcBellRegisters,
     pwr_ctl: *mut VolatileCell<u32>,
+    client: Cell<Option<&'static RFCoreClient>>,
+}
+
+/*
+    RFCoreClient - Client to interface
+    with protocol, to get callbacks when a command has been processed.
+*/
+pub trait RFCoreClient {
+    fn command_done(&self);
 }
 
 impl RFCore {
@@ -142,6 +186,7 @@ impl RFCore {
         RFCore {
             bell_regs: RFC_DBELL_BASE,
             pwr_ctl: RFC_PWR_BASE,
+            client: Cell::new(None),
         }
     }
 
@@ -150,14 +195,14 @@ impl RFCore {
         prcm::Power::enable_domain(prcm::PowerDomain::RFC);
         prcm::Clock::enable_rfc();
 
+        unsafe {
+            rtc::RTC.set_upd_en(true);
+        }
+
         // Wait for the power domain to be up
         while !prcm::Power::is_enabled(prcm::PowerDomain::RFC) {}
 
         let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
-
-        // Enable CPE
-        bell_regs.rf_cpe_interrupt_enable.set(0);
-        bell_regs.rf_cpe_interrupt_flags.set(0);
 
         // Setup clocks and allow CPE to boot
         let pwr_ctl: &VolatileCell<u32> = unsafe { &*self.pwr_ctl };
@@ -166,8 +211,16 @@ impl RFCore {
                 | RFC_PWR_RFE | RFC_PWR_RFERAM | RFC_PWR_MDM | RFC_PWR_MDMRAM,
         );
 
-        // Turn on additional clocks
         bell_regs.rf_ack_interrupt_flag.set(0);
+
+        // All interrupts to Cpe0 except INTERNAL_ERROR which is routed to Cpe1
+        bell_regs.rf_cpe_interrupt_vector_sel.write(RFCpeInterrupts::INTERNAL_ERROR::SET);
+        // Enable INTERNAL_ERROR and LOAD_DONE
+        bell_regs.rf_cpe_interrupt_enable.write(RFCpeInterrupts::INTERNAL_ERROR::SET +
+            RFCpeInterrupts::COMMAND_DONE::SET);
+        // Clear interrupt flags that might've been set by the init commands
+        bell_regs.rf_cpe_interrupt_flags.set(0x00);
+
         self.send_and_wait(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40));
 
         // Request the bus
@@ -211,10 +264,6 @@ impl RFCore {
     }
 
     pub fn start_rat(&self) {
-        unsafe {
-            rtc::RTC.set_upd_en(true);
-        }
-
         let cmd = RfcCommandStartRat {
             command_no: 0x080A,
             status: 0,
@@ -247,6 +296,7 @@ impl RFCore {
         }
     }
 
+
     pub fn send<C: RfcCommand>(&self, cmd: &C) -> RfcResult {
         let command: u32 = match cmd.command_type() {
             RfcCommandType::Direct => cmd.direct_command(),
@@ -265,11 +315,25 @@ impl RFCore {
         // Set the command
         bell_regs.command.set(command);
 
-        debug_verbose!("Radio command pending: 0x{:x}\r", command);
+        //debug_verbose!("Doesn't work without this shit.\r");
+        /*for _i in 0..0x2FFFFF {
+            unsafe { asm!("nop") };
+        }*/
+
+        // Wait for an ACK
+        let mut timeout = 0;
+        let mut status: u32 = 0;
+        while status != 0x01 {
+            if timeout > 50000 {
+                panic!("Radio did not ACK command!\r");
+            }
+
+            timeout += 1;
+            status = bell_regs.command_status.get() & 0xFF;
+        }
 
         // Wait for the ACK
-        //while(!HWREG(RFC_DBELL_BASE + RFC_DBELL_O_RFACKIFG));
-        while bell_regs.rf_ack_interrupt_flag.get() == 0 { }
+        while !bell_regs.rf_ack_interrupt_flag.is_set(RFAckInterruptFlag::ACK) { }
         bell_regs.rf_ack_interrupt_flag.set(0);
 
         RfcResult::Ok
@@ -334,11 +398,24 @@ impl RFCore {
             RfcInterrupt::CmdAck => {
                 // Clear the interrupt
                 bell_regs.rf_ack_interrupt_flag.set(0);
-
-                debug_verbose!("CmdAck handled\r");
             }
-            _ => (),
+            RfcInterrupt::Cpe0 => {
+                let rfcpeifg = bell_regs.rf_cpe_interrupt_flags.get();
+                bell_regs.rf_cpe_interrupt_flags.set(0);
+                if (rfcpeifg & 0x1) != 0 {
+                    self.client.get().map(|client| client.command_done());
+                }
+            }
+            RfcInterrupt::Cpe1 => {
+                bell_regs.rf_cpe_interrupt_flags.set(0x7FFFFFFF);
+                panic!("Internal occurred during radio command!\r");
+            }
+            _ => panic!("Unhandled RFC interrupt: {}\r", int as u8),
         }
+    }
+
+    pub fn set_client(&self, client: &'static RFCoreClient) {
+        self.client.set(Some(client));
     }
 }
 
@@ -361,14 +438,14 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for DirectCommand {
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Direct
-        }
         fn command_id(&self) -> &u16 {
             &self.command_id
         }
         fn command_status(&self) -> &u16 {
             &self.parameters
+        }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Direct
         }
     }
 
@@ -386,14 +463,14 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for ImmediateCommand {
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
         fn command_id(&self) -> &u16 {
             &self.command_no
         }
         fn command_status(&self) -> &u16 {
             &self.status
+        }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
         }
     }
 
@@ -414,14 +491,14 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for RfcCommandRadioSetup {
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
         fn command_id(&self) -> &u16 {
             &self.command_no
         }
         fn command_status(&self) -> &u16 {
             &self.status
+        }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
         }
     }
 
@@ -438,14 +515,14 @@ pub mod rfc_commands {
     }
 
     impl RfcCommand for RfcCommandStartRat {
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
         fn command_id(&self) -> &u16 {
             &self.command_no
         }
         fn command_status(&self) -> &u16 {
             &self.status
+        }
+        fn command_type(&self) -> RfcCommandType {
+            RfcCommandType::Immediate
         }
     }
 
