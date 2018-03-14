@@ -12,7 +12,7 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26x0::radio;
+use cc26xx::radio;
 use cc26xx::aon;
 use cc26xx::osc;
 
@@ -33,7 +33,7 @@ static mut APP_MEMORY: [u8; 10240] = [0; 10240];
 pub struct Platform {
     ble_radio: &'static capsules::ble_advertising_driver::BLE<
         'static,
-        cc26x0::radio::ble::Ble,
+        radio::ble::Ble,
         capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
     >,
     gpio: &'static capsules::gpio::GPIO<'static, cc26xx::gpio::GPIOPin>,
@@ -214,22 +214,22 @@ pub unsafe fn reset_handler() {
     let ble_radio = static_init!(
         capsules::ble_advertising_driver::BLE<
             'static,
-            cc26x0::radio::ble::Ble,
+            radio::ble::Ble,
             capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
         >,
         capsules::ble_advertising_driver::BLE::new(
-            &mut cc26x0::radio::BLE,
+            &mut radio::BLE,
             kernel::Grant::create(),
             &mut capsules::ble_advertising_driver::BUF,
             ble_radio_virtual_alarm
         )
     );
     kernel::hil::ble_advertising::BleAdvertisementDriver::set_receive_client(
-        &cc26x0::radio::BLE,
+        &radio::BLE,
         ble_radio,
     );
     kernel::hil::ble_advertising::BleAdvertisementDriver::set_transmit_client(
-        &cc26x0::radio::BLE,
+        &radio::BLE,
         ble_radio,
     );
     ble_radio_virtual_alarm.set_client(ble_radio);

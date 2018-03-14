@@ -17,8 +17,8 @@
 
 // RFC Commands are located at the bottom
 use self::rfc_commands::*;
-use cc26xx::prcm;
-use cc26xx::rtc;
+use prcm;
+use rtc;
 use core::cell::Cell;
 
 use kernel::common::regs::{ReadOnly, ReadWrite};

@@ -4,7 +4,7 @@
 
 use core::cell::Cell;
 use self::ble_commands::*;
-use cc26xx::osc;
+use osc;
 use radio::rfc::{self, rfc_commands};
 
 use kernel::hil::ble_advertising::{self,RadioChannel};

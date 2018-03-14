@@ -8,14 +8,10 @@ extern crate cortexm3;
 extern crate kernel;
 extern crate cc26xx;
 
-#[macro_use]
-extern crate bitfield;
-
 pub mod chip;
 pub mod crt1;
 pub mod uart;
 pub mod i2c;
-pub mod radio;
 pub mod sensor;
 pub mod hdc;
 pub mod mpu;
