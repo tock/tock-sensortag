@@ -4,7 +4,7 @@
 
 use core::cell::Cell;
 use self::ble_commands::*;
-use cc26xx::{osc,prcm};
+use cc26xx::osc;
 use radio::rfc::{self, rfc_commands};
 
 use kernel::hil::ble_advertising::{self,RadioChannel};
@@ -48,7 +48,13 @@ impl Ble {
         }
     }
 
-    pub fn power_up(&self) {
+    pub fn configure(&self) {
+        if self.rfc.current_mode() == Some(rfc::RfcMode::BLE) {
+            return
+        }
+
+        self.rfc.set_mode(rfc::RfcMode::BLE);
+
         /*
             The BLE communication is synchronous, so we need to be synchronized to the same
             clock frequency. The best accuracy is achieved when using the XTAL Oscillator.
@@ -58,8 +64,6 @@ impl Ble {
         */
         osc::OSCILLATOR_CONTROL.request_switch_to_hf_xosc();
 
-        prcm::rf_mode_sel(0x01);
-
         self.rfc.enable();
         self.rfc.start_rat();
 
@@ -67,8 +71,7 @@ impl Ble {
 
         unsafe {
             let reg_overrides: u32 = (&BLE_OVERRIDES[0] as *const u32) as u32;
-            // Mode 0 = BLE
-            self.rfc.setup(0x00, reg_overrides);
+            self.rfc.setup(reg_overrides);
         }
     }
 
@@ -94,6 +97,8 @@ impl Ble {
     }
 
     pub fn advertise(&self, radio_channel: RadioChannel) {
+        self.configure();
+
         let channel = match radio_channel {
             RadioChannel::AdvertisingChannel37 => 37,
             RadioChannel::AdvertisingChannel38 => 38,

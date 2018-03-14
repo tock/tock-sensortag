@@ -69,8 +69,8 @@ pub trait RfcCommand {
 
 #[repr(C)]
 pub struct RfcBellRegisters {
-    command: ReadWrite<u32>,
-    command_status: ReadOnly<u32>,
+    cmdr: ReadWrite<u32>,
+    cmdsta: ReadOnly<u32>,
     _rf_hw_interrupt_flags: ReadOnly<u32>,
     _rf_hw_interrupt_enable: ReadOnly<u32>,
 
@@ -134,6 +134,7 @@ const RFC_CMD0: u16 = 0x607;
 const RFC_PING: u16 = 0x406;
 const RFC_BUS_REQUEST: u16 = 0x40E;
 const RFC_START_RAT_TIMER: u16 = 0x080A;
+const RFC_SETUP: u16 = 0x0802;
 
 /*
     Power masks in order to enable certain clocks in the RFC
@@ -167,10 +168,18 @@ pub enum RfcInterrupt {
     Hardware,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum RfcMode {
+    BLE = 0x00,
+    IEEE802154 = 0x01,
+    Unchanged = 0xFF,
+}
+
 pub struct RFCore {
     bell_regs: *mut RfcBellRegisters,
     pwr_ctl: *mut VolatileCell<u32>,
     client: Cell<Option<&'static RFCoreClient>>,
+    mode: Cell<Option<RfcMode>>,
 }
 
 /*
@@ -187,7 +196,28 @@ impl RFCore {
             bell_regs: RFC_DBELL_BASE,
             pwr_ctl: RFC_PWR_BASE,
             client: Cell::new(None),
+            mode: Cell::new(None),
         }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        prcm::Power::is_enabled(prcm::PowerDomain::RFC)
+    }
+
+    pub fn current_mode(&self) -> Option<RfcMode> {
+        self.mode.get()
+    }
+
+    pub fn set_mode(&self, mode: RfcMode) {
+        let rf_mode = match mode {
+            RfcMode::BLE => 0x01,
+            _ => panic!("No other mode than BLE is currently supported for RF!\r")
+        };
+
+        // Redirect power to the correct module
+        prcm::rf_mode_sel(rf_mode);
+
+        self.mode.set(Some(mode))
     }
 
     pub fn enable(&self) {
@@ -216,23 +246,32 @@ impl RFCore {
         // All interrupts to Cpe0 except INTERNAL_ERROR which is routed to Cpe1
         bell_regs.rf_cpe_interrupt_vector_sel.write(RFCpeInterrupts::INTERNAL_ERROR::SET);
         // Enable INTERNAL_ERROR and LOAD_DONE
-        bell_regs.rf_cpe_interrupt_enable.write(RFCpeInterrupts::INTERNAL_ERROR::SET +
-            RFCpeInterrupts::COMMAND_DONE::SET);
+        bell_regs.rf_cpe_interrupt_enable.write(
+            RFCpeInterrupts::INTERNAL_ERROR::SET
+                + RFCpeInterrupts::COMMAND_DONE::SET
+                + RFCpeInterrupts::BOOT_DONE::SET
+        );
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
 
-        self.send_and_wait(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40));
+        self.send_ensure(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40));
 
         // Request the bus
-        self.send_and_wait(&DirectCommand::new(RFC_BUS_REQUEST, 1));
+        self.send_ensure(&DirectCommand::new(RFC_BUS_REQUEST, 1));
 
         // Send a ping command to verify that the core is ready and alive
-        self.send_and_wait(&DirectCommand::new(RFC_PING, 0));
+        self.send_ensure(&DirectCommand::new(RFC_PING, 0));
     }
 
-    pub fn setup(&self, mode: u8, reg_override: u32) {
+    pub fn setup(&self, reg_override: u32) {
+        let mode = self.mode
+            .get()
+            .unwrap_or_else(|| {
+                panic!("No RF mode selected, can not setup.\r")
+            });
+
         let setup_cmd = RfcCommandRadioSetup {
-            command_no: 0x0802,
+            command_no: RFC_SETUP,
             status: 0,
             p_nextop: 0,
             ratmr: 0,
@@ -242,7 +281,7 @@ impl RFCore {
                 cond.set_rule(0x01); // COND_NEVER
                 cond
             },
-            mode: mode,
+            mode: mode as u8,
             lo_divider: 0,
             config: {
                 let mut cfg = RfcSetupConfig(0);
@@ -254,18 +293,12 @@ impl RFCore {
             reg_override: reg_override,
         };
 
-        self.send(&setup_cmd);
-
-        // Wait for the cmd to be done
-        match self.wait_for(&setup_cmd) {
-            RfcResult::Error(status) => panic!("Error occurred during setup: 0x{:x}\r", status),
-            RfcResult::Ok => debug_verbose!("Setup successful!\r"),
-        }
+        self.send_ensure(&setup_cmd);
     }
 
     pub fn start_rat(&self) {
         let cmd = RfcCommandStartRat {
-            command_no: 0x080A,
+            command_no: RFC_START_RAT_TIMER,
             status: 0,
             next_op: 0,
             start_time: 0,
@@ -279,23 +312,15 @@ impl RFCore {
             rat0: 0,
         };
 
-        self.send(&cmd);
-
-        // Wait for the cmd to be done
-        match self.wait_for(&cmd) {
-            RfcResult::Error(status) => panic!("Error occurred during RAT start: 0x{:x}\r", status),
-            RfcResult::Ok => debug_verbose!("RAT started.\r"),
-        }
+        self.send_ensure(&cmd);
     }
 
-    pub fn send_and_wait<C: RfcCommand>(&self, cmd: &C) {
-        self.send(cmd);
-        match self.wait_for(cmd) {
+    pub fn send_ensure<C: RfcCommand>(&self, cmd: &C) {
+        match self.send(cmd) {
             RfcResult::Error(status) => panic!("Error occurred during send_and_wait cmdsta=0x{:x}\r", status),
             RfcResult::Ok => (),
         }
     }
-
 
     pub fn send<C: RfcCommand>(&self, cmd: &C) -> RfcResult {
         let command: u32 = match cmd.command_type() {
@@ -310,86 +335,26 @@ impl RFCore {
 
         let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
 
-        while bell_regs.command.get() != 0 {}
+        // CMDR is only writeable once it is zeroed
+        while bell_regs.cmdr.get() != 0 {}
 
         // Set the command
-        bell_regs.command.set(command);
+        bell_regs.cmdr.set(command);
 
-        //debug_verbose!("Doesn't work without this shit.\r");
-        /*for _i in 0..0x2FFFFF {
-            unsafe { asm!("nop") };
-        }*/
-
-        // Wait for an ACK
-        let mut timeout = 0;
-        let mut status: u32 = 0;
-        while status != 0x01 {
-            if timeout > 50000 {
-                panic!("Radio did not ACK command!\r");
-            }
-
-            timeout += 1;
-            status = bell_regs.command_status.get() & 0xFF;
-        }
-
-        // Wait for the ACK
-        while !bell_regs.rf_ack_interrupt_flag.is_set(RFAckInterruptFlag::ACK) { }
-        bell_regs.rf_ack_interrupt_flag.set(0);
-
-        RfcResult::Ok
-    }
-
-    pub fn wait_for<C: RfcCommand>(&self, cmd: &C) -> RfcResult {
+        // Wait for ACK from the radio MCU
         let mut timeout: u32 = 0;
         let mut status = 0;
         const MAX_TIMEOUT: u32 = 0x2FFFFFF;
-
-        match cmd.command_type() {
-            /*
-                Direct commands return directly with a result (if communication is enabled).
-                    CMD_DONE = 0x01
-                And is read from CMDSTA in the DBELL registers.
-            */
-            RfcCommandType::Direct => {
-                let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
-                while timeout < MAX_TIMEOUT {
-                    status = bell_regs.command_status.get();
-                    if (status & 0xFF) == 0x01 {
-                        return RfcResult::Ok;
-                    }
-
-                    timeout += 1;
-                }
+        while timeout < MAX_TIMEOUT {
+            status = bell_regs.cmdsta.get();
+            if (status & 0xFF) == 0x01 {
+                return RfcResult::Ok;
             }
 
-            /*
-                Immediate/Radio operations does not return directly, and can take a while to
-                complete depending on the complexity of the command. The result is then directly
-                written to the status register of the command sent.
-            */
-            RfcCommandType::Immediate => while timeout < MAX_TIMEOUT {
-                status = *cmd.command_status() as u32;
-                if (status & 0x0C00) == 0x0400 {
-                    debug_verbose!("Got status 0x{:x}\r", status);
-                    return RfcResult::Ok;
-                }
-
-                timeout += 1;
-            },
+            timeout += 1;
         }
 
-        // If we arrive here, an error occurred above (timed out)
-        return RfcResult::Error(status);
-    }
-
-    pub fn get_status(&self) -> u32 {
-        let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
-        bell_regs.command_status.get()
-    }
-
-    pub fn get_command(&self) -> u32 {
-        let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
-        bell_regs.command.get()
+        RfcResult::Error(status)
     }
 
     pub fn handle_interrupt(&self, int: RfcInterrupt) {
@@ -401,7 +366,9 @@ impl RFCore {
             }
             RfcInterrupt::Cpe0 => {
                 let rfcpeifg = bell_regs.rf_cpe_interrupt_flags.get();
+
                 bell_regs.rf_cpe_interrupt_flags.set(0);
+
                 if (rfcpeifg & 0x1) != 0 {
                     self.client.get().map(|client| client.command_done());
                 }
