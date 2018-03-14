@@ -31,6 +31,11 @@ static mut PROCESSES: [Option<kernel::Process<'static>>; NUM_PROCS] = [None, Non
 static mut APP_MEMORY: [u8; 10240] = [0; 10240];
 
 pub struct Platform {
+    ble_radio: &'static capsules::ble_advertising_driver::BLE<
+        'static,
+        cc26x0::radio::ble::Ble,
+        capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+    >,
     gpio: &'static capsules::gpio::GPIO<'static, cc26xx::gpio::GPIOPin>,
     led: &'static capsules::led::LED<'static, cc26xx::gpio::GPIOPin>,
     button: &'static capsules::button::Button<'static, cc26xx::gpio::GPIOPin>,
@@ -53,6 +58,7 @@ impl kernel::Platform for Platform {
             capsules::led::DRIVER_NUM => f(Some(self.led)),
             capsules::button::DRIVER_NUM => f(Some(self.button)),
             capsules::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            capsules::ble_advertising_driver::DRIVER_NUM => f(Some(self.ble_radio)),
             capsules::rng::DRIVER_NUM => f(Some(self.rng)),
             _ => f(None),
         }
@@ -191,6 +197,10 @@ pub unsafe fn reset_handler() {
         capsules::alarm::AlarmDriver::new(virtual_alarm1, kernel::Grant::create())
     );
     virtual_alarm1.set_client(alarm);
+    let ble_radio_virtual_alarm = static_init!(
+        capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+        capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
+    );
 
     cc26xx::trng::TRNG.enable();
     let rng = static_init!(
@@ -199,15 +209,34 @@ pub unsafe fn reset_handler() {
     );
     cc26xx::trng::TRNG.set_client(rng);
 
+    // Use BLE
+    radio::RFC.set_client(&radio::BLE);
     radio::BLE.power_up();
-    loop {
-        radio::BLE.advertise();
-        for _i in 0..960000 {
-            asm!("nop");
-        }
-    }
+    let ble_radio = static_init!(
+        capsules::ble_advertising_driver::BLE<
+            'static,
+            cc26x0::radio::ble::Ble,
+            capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+        >,
+        capsules::ble_advertising_driver::BLE::new(
+            &mut cc26x0::radio::BLE,
+            kernel::Grant::create(),
+            &mut capsules::ble_advertising_driver::BUF,
+            ble_radio_virtual_alarm
+        )
+    );
+    kernel::hil::ble_advertising::BleAdvertisementDriver::set_receive_client(
+        &cc26x0::radio::BLE,
+        ble_radio,
+    );
+    kernel::hil::ble_advertising::BleAdvertisementDriver::set_transmit_client(
+        &cc26x0::radio::BLE,
+        ble_radio,
+    );
+    ble_radio_virtual_alarm.set_client(ble_radio);
 
     let sensortag = Platform {
+        ble_radio,
         gpio,
         led,
         button,
