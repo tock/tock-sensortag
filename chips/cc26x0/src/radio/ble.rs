@@ -2,12 +2,12 @@
 //!     Manages bluetooth.
 //!
 
-pub extern crate nrf5x;
-
 use core::cell::Cell;
 use self::ble_commands::*;
 use cc26xx::{osc,prcm};
 use radio::rfc::{self, rfc_commands};
+
+use kernel::hil::ble_advertising::{self,RadioChannel};
 
 static mut BLE_OVERRIDES: [u32; 7] = [
     0x00364038 /* Synth: Set RTRIM (POTAILRESTRIM) to 6 */,
@@ -32,8 +32,8 @@ static mut DEVICE_ADDRESS: [u8; 6] = [0; 6];
 
 pub struct Ble {
     rfc: &'static rfc::RFCore,
-    rx_client: Cell<Option<&'static nrf5x::ble_advertising_hil::RxClient>>,
-    tx_client: Cell<Option<&'static nrf5x::ble_advertising_hil::TxClient>>,
+    rx_client: Cell<Option<&'static ble_advertising::RxClient>>,
+    tx_client: Cell<Option<&'static ble_advertising::TxClient>>,
 }
 
 /* BLE RFC Commands */
@@ -148,9 +148,7 @@ impl rfc::RFCoreClient for Ble {
     }
 }
 
-use self::nrf5x::ble_advertising_hil::RadioChannel;
-
-impl nrf5x::ble_advertising_hil::BleAdvertisementDriver for Ble {
+impl ble_advertising::BleAdvertisementDriver for Ble {
     fn transmit_advertisement(
         &self,
         buf: &'static mut [u8],
@@ -165,11 +163,11 @@ impl nrf5x::ble_advertising_hil::BleAdvertisementDriver for Ble {
     fn receive_advertisement(&self, _channel: RadioChannel) {
     }
 
-    fn set_receive_client(&self, client: &'static nrf5x::ble_advertising_hil::RxClient) {
+    fn set_receive_client(&self, client: &'static ble_advertising::RxClient) {
         self.rx_client.set(Some(client));
     }
 
-    fn set_transmit_client(&self, client: &'static nrf5x::ble_advertising_hil::TxClient) {
+    fn set_transmit_client(&self, client: &'static ble_advertising::TxClient) {
         self.tx_client.set(Some(client));
     }
 }
@@ -177,7 +175,7 @@ impl nrf5x::ble_advertising_hil::BleAdvertisementDriver for Ble {
 use kernel;
 use radio::ble::ble_commands::BleAdvertise;
 
-impl nrf5x::ble_advertising_hil::BleConfig for Ble {
+impl ble_advertising::BleConfig for Ble {
     fn set_tx_power(&self, _tx_power: u8) -> kernel::ReturnCode {
         kernel::ReturnCode::SUCCESS
     }
