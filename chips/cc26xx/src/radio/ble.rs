@@ -7,6 +7,9 @@ use self::ble_commands::*;
 use osc;
 use radio::rfc::{self, rfc_commands};
 
+use kernel;
+use radio::ble::ble_commands::BleAdvertise;
+
 use kernel::hil::ble_advertising::{self,RadioChannel};
 
 static mut BLE_OVERRIDES: [u32; 7] = [
@@ -177,9 +180,6 @@ impl ble_advertising::BleAdvertisementDriver for Ble {
     }
 }
 
-use kernel;
-use radio::ble::ble_commands::BleAdvertise;
-
 impl ble_advertising::BleConfig for Ble {
     fn set_tx_power(&self, _tx_power: u8) -> kernel::ReturnCode {
         kernel::ReturnCode::SUCCESS
@@ -187,7 +187,6 @@ impl ble_advertising::BleConfig for Ble {
 }
 
 pub mod ble_commands {
-    use radio::rfc::*;
     use radio::rfc::rfc_commands::*;
 
     #[repr(C)]
@@ -226,20 +225,6 @@ pub mod ble_commands {
 
         pub end_trigger: u8,
         pub end_time: u32,
-    }
-
-    impl RfcCommand for BleAdvertise {
-        fn command_id(&self) -> &u16 {
-            &self.command_no
-        }
-
-        fn command_status(&self) -> &u16 {
-            &self.status
-        }
-
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
     }
 
     bitfield!{

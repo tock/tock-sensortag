@@ -19,53 +19,10 @@
 use self::rfc_commands::*;
 use prcm;
 use rtc;
-use core::cell::Cell;
 
 use kernel::common::regs::{ReadOnly, ReadWrite};
 use kernel::common::VolatileCell;
-
-/*
-    RFC commands can be of two types:
-        * Direct Commands
-        * Radio operation / Immediate
-*/
-pub enum RfcCommandType {
-    Direct,
-    Immediate,
-}
-
-/*
-    Trait to implement custom RFC commands.
-*/
-pub trait RfcCommand {
-    fn command_id(&self) -> &u16;
-    fn command_status(&self) -> &u16;
-    fn command_type(&self) -> RfcCommandType;
-
-    /*
-        A direct command structure of CMDR:
-        bit  31                    16               8               2    0
-            ----------------------------------------------------------------
-            | Command ID (16 bits) | Opt. param     | Opt. ext      | 0  1 |
-            ----------------------------------------------------------------
-    */
-    fn direct_command(&self) -> u32 {
-        let cmd = *self.command_id() as u32;
-        let par = *self.command_status() as u32;
-        (cmd << 16) | (par & 0xFFFC) | 1
-    }
-
-    /*
-        A radio op / immediate command structure of CMDR:
-        bit  31                    16               8               2    0
-            ----------------------------------------------------------------
-            | Command ID (16 bits) | Opt. param     | Opt. ext      | 0  1 |
-            ----------------------------------------------------------------
-    */
-    fn immediate_command(&self) -> *const Self {
-        self as *const Self
-    }
-}
+use core::cell::Cell;
 
 #[repr(C)]
 pub struct RfcBellRegisters {
@@ -254,13 +211,19 @@ impl RFCore {
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
 
-        self.send_ensure(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40));
+        self.ensure_ok(|| {
+            self.send_direct(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40))
+        });
 
         // Request the bus
-        self.send_ensure(&DirectCommand::new(RFC_BUS_REQUEST, 1));
+        self.ensure_ok(|| {
+            self.send_direct(&DirectCommand::new(RFC_BUS_REQUEST, 1))
+        });
 
         // Send a ping command to verify that the core is ready and alive
-        self.send_ensure(&DirectCommand::new(RFC_PING, 0));
+        self.ensure_ok(|| {
+            self.send_direct(&DirectCommand::new(RFC_PING, 0))
+        });
     }
 
     pub fn setup(&self, reg_override: u32) {
@@ -293,7 +256,7 @@ impl RFCore {
             reg_override: reg_override,
         };
 
-        self.send_ensure(&setup_cmd);
+        self.ensure_ok(move || self.send(&setup_cmd));
     }
 
     pub fn start_rat(&self) {
@@ -312,22 +275,54 @@ impl RFCore {
             rat0: 0,
         };
 
-        self.send_ensure(&cmd);
+        self.ensure_ok(move || self.send(&cmd));
     }
 
-    pub fn send_ensure<C: RfcCommand>(&self, cmd: &C) {
-        match self.send(cmd) {
-            RfcResult::Error(status) => panic!("Error occurred during send_and_wait cmdsta=0x{:x}\r", status),
+    pub fn ensure_ok<F>(&self, closure: F)
+        where F: Fn() -> RfcResult
+    {
+        match closure() {
+            RfcResult::Error(status) => panic!("RFC error occurred, status=0x{:x}\r", status),
             RfcResult::Ok => (),
         }
     }
 
-    pub fn send<C: RfcCommand>(&self, cmd: &C) -> RfcResult {
-        let command: u32 = match cmd.command_type() {
-            RfcCommandType::Direct => cmd.direct_command(),
-            RfcCommandType::Immediate => cmd.immediate_command() as u32,
+    fn send_direct(&self, dir_cmd: &DirectCommand) -> RfcResult {
+        /*
+            A direct command structure of CMDR:
+            bit  31                    16               8               2    0
+                ----------------------------------------------------------------
+                | Command ID (16 bits) | Opt. param     | Opt. ext      | 0  1 |
+                ----------------------------------------------------------------
+        */
+        let command = {
+            let cmd = dir_cmd.command_id as u32;
+            let par = dir_cmd.parameters as u32;
+            (cmd << 16) | (par & 0xFFFC) | 1
         };
 
+        self.post_cmdr(command)
+    }
+
+    pub fn send<T>(&self, cmd: &T) -> RfcResult {
+        let command = {
+            /*
+                A radio op / immediate command structure of CMDR:
+                bit  31                    16               8               2    0
+                    ----------------------------------------------------------------
+                    | Command Address                                       | 0  0 |
+                    ----------------------------------------------------------------
+            */
+            (cmd as *const T) as u32
+        };
+
+        self.post_cmdr(command)
+    }
+
+    /*
+        Post a command to (CMDR) the radio doorbell.
+    */
+    fn post_cmdr(&self, command: u32) -> RfcResult {
         // Check if the radio is accessible or not
         if !prcm::Power::is_enabled(prcm::PowerDomain::RFC) {
             panic!("RFC power domain is off.\r");
@@ -387,8 +382,6 @@ impl RFCore {
 }
 
 pub mod rfc_commands {
-    use radio::rfc::{RfcCommand, RfcCommandType};
-
     /* Basic direct command */
     pub struct DirectCommand {
         pub command_id: u16,
@@ -401,43 +394,6 @@ pub mod rfc_commands {
                 command_id: command,
                 parameters: param,
             }
-        }
-    }
-
-    impl RfcCommand for DirectCommand {
-        fn command_id(&self) -> &u16 {
-            &self.command_id
-        }
-        fn command_status(&self) -> &u16 {
-            &self.parameters
-        }
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Direct
-        }
-    }
-
-    /* Basic immediate command */
-    #[repr(C)]
-    pub struct ImmediateCommand {
-        // These fields below are always the first bytes in any rfc command
-        // which is a radio operation or a immediate command.
-        pub command_no: u16,
-        pub status: u16,
-        pub next_op: u32,
-        pub start_time: u32,
-        pub start_trigger: u8,
-        pub condition: RfcCondition,
-    }
-
-    impl RfcCommand for ImmediateCommand {
-        fn command_id(&self) -> &u16 {
-            &self.command_no
-        }
-        fn command_status(&self) -> &u16 {
-            &self.status
-        }
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
         }
     }
 
@@ -457,18 +413,6 @@ pub mod rfc_commands {
         pub reg_override: u32,
     }
 
-    impl RfcCommand for RfcCommandRadioSetup {
-        fn command_id(&self) -> &u16 {
-            &self.command_no
-        }
-        fn command_status(&self) -> &u16 {
-            &self.status
-        }
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
-    }
-
     #[repr(C)]
     pub struct RfcCommandStartRat {
         pub command_no: u16,
@@ -479,18 +423,6 @@ pub mod rfc_commands {
         pub condition: RfcCondition,
         pub _reserved: u16,
         pub rat0: u32,
-    }
-
-    impl RfcCommand for RfcCommandStartRat {
-        fn command_id(&self) -> &u16 {
-            &self.command_no
-        }
-        fn command_status(&self) -> &u16 {
-            &self.status
-        }
-        fn command_type(&self) -> RfcCommandType {
-            RfcCommandType::Immediate
-        }
     }
 
     /* Bitfields used by many commands */
