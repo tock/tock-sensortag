@@ -360,11 +360,10 @@ impl RFCore {
                 bell_regs.rf_ack_interrupt_flag.set(0);
             }
             RfcInterrupt::Cpe0 => {
-                let rfcpeifg = bell_regs.rf_cpe_interrupt_flags.get();
-
+                let command_done = bell_regs.rf_cpe_interrupt_flags.is_set(RFCpeInterrupts::COMMAND_DONE);
                 bell_regs.rf_cpe_interrupt_flags.set(0);
 
-                if (rfcpeifg & 0x1) != 0 {
+                if command_done {
                     self.client.get().map(|client| client.command_done());
                 }
             }
