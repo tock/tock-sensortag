@@ -17,7 +17,6 @@ pub mod uart;
 pub mod i2c;
 pub mod sensor;
 pub mod hdc;
-pub mod mpu;
 pub mod aux;
 pub mod radio;
 pub mod timer;
