@@ -8,6 +8,9 @@ extern crate cortexm3;
 extern crate kernel;
 extern crate cc26xx;
 
+#[macro_use]
+extern crate bitfield;
+
 pub mod chip;
 pub mod crt1;
 pub mod uart;
@@ -15,6 +18,14 @@ pub mod i2c;
 pub mod sensor;
 pub mod hdc;
 pub mod mpu;
+pub mod aux;
+pub mod radio;
+pub mod timer;
+pub mod osc;
+pub mod ioc;
+pub mod prcm;
+pub mod rtc;
+pub mod gpio;
 
 // Since the setup code is converted from C -> Rust, we
 // ignore side effects from the conversion (unused vars & muts).

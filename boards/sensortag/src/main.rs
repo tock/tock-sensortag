@@ -12,9 +12,8 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::radio;
-use cc26xx::aon;
-use cc26xx::osc;
+use cc26xx::{aon,trng};
+use cc26x0::{radio,rtc,uart,gpio};
 
 #[macro_use]
 pub mod io;
@@ -34,17 +33,17 @@ pub struct Platform {
     ble_radio: &'static capsules::ble_advertising_driver::BLE<
         'static,
         radio::ble::Ble,
-        capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+        capsules::virtual_alarm::VirtualMuxAlarm<'static, rtc::Rtc>,
     >,
-    gpio: &'static capsules::gpio::GPIO<'static, cc26xx::gpio::GPIOPin>,
-    led: &'static capsules::led::LED<'static, cc26xx::gpio::GPIOPin>,
-    button: &'static capsules::button::Button<'static, cc26xx::gpio::GPIOPin>,
-    console: &'static capsules::console::Console<'static, cc26x0::uart::UART>,
+    gpio: &'static capsules::gpio::GPIO<'static, gpio::GPIOPin>,
+    led: &'static capsules::led::LED<'static, gpio::GPIOPin>,
+    button: &'static capsules::button::Button<'static, gpio::GPIOPin>,
+    console: &'static capsules::console::Console<'static, uart::UART>,
     alarm: &'static capsules::alarm::AlarmDriver<
         'static,
-        capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+        capsules::virtual_alarm::VirtualMuxAlarm<'static, rtc::Rtc>,
     >,
-    rng: &'static capsules::rng::SimpleRng<'static, cc26xx::trng::Trng>,
+    rng: &'static capsules::rng::SimpleRng<'static, trng::Trng>,
 }
 
 impl kernel::Platform for Platform {
@@ -73,63 +72,63 @@ pub unsafe fn reset_handler() {
     aon::AON_EVENT.setup();
 
     // Power on peripheral domain and gpio clocks
-    cc26xx::gpio::power_on_gpio();
+    gpio::power_on_gpio();
 
     // LEDs
     let led_pins = static_init!(
         [(
-            &'static cc26xx::gpio::GPIOPin,
+            &'static gpio::GPIOPin,
             capsules::led::ActivationMode
         ); 2],
         [
             (
-                &cc26xx::gpio::PORT[10],
+                &gpio::PORT[10],
                 capsules::led::ActivationMode::ActiveHigh
             ), // Red
             (
-                &cc26xx::gpio::PORT[15],
+                &gpio::PORT[15],
                 capsules::led::ActivationMode::ActiveHigh
             ) // Green
         ]
     );
     let led = static_init!(
-        capsules::led::LED<'static, cc26xx::gpio::GPIOPin>,
+        capsules::led::LED<'static, gpio::GPIOPin>,
         capsules::led::LED::new(led_pins)
     );
 
     // BUTTONs
     let button_pins = static_init!(
-        [(&'static cc26xx::gpio::GPIOPin, capsules::button::GpioMode); 2],
+        [(&'static gpio::GPIOPin, capsules::button::GpioMode); 2],
         [
             (
-                &cc26xx::gpio::PORT[0],
+                &gpio::PORT[0],
                 capsules::button::GpioMode::LowWhenPressed
             ), // Button 2
             (
-                &cc26xx::gpio::PORT[4],
+                &gpio::PORT[4],
                 capsules::button::GpioMode::LowWhenPressed
             ) // Button 1
         ]
     );
     let button = static_init!(
-        capsules::button::Button<'static, cc26xx::gpio::GPIOPin>,
+        capsules::button::Button<'static, gpio::GPIOPin>,
         capsules::button::Button::new(button_pins, kernel::Grant::create())
     );
     for &(btn, _) in button_pins.iter() {
         btn.set_client(button);
     }
 
-    cc26x0::uart::UART0.set_pins(&cc26xx::gpio::PORT[29], &cc26xx::gpio::PORT[28]);
+    uart::UART0.set_pins(29, 28);
     let console = static_init!(
-        capsules::console::Console<cc26x0::uart::UART>,
+        capsules::console::Console<uart::UART>,
         capsules::console::Console::new(
-            &cc26x0::uart::UART0,
+            &uart::UART0,
             115200,
             &mut capsules::console::WRITE_BUF,
             kernel::Grant::create()
         )
     );
-    kernel::hil::uart::UART::set_client(&cc26x0::uart::UART0, console);
+    kernel::hil::uart::UART::set_client(&uart::UART0, console);
     console.initialize();
 
     // Attach the kernel debug interface to this console
@@ -138,76 +137,76 @@ pub unsafe fn reset_handler() {
 
     // Setup for remaining GPIO pins
     let gpio_pins = static_init!(
-        [&'static cc26xx::gpio::GPIOPin; 26],
+        [&'static gpio::GPIOPin; 26],
         [
-            &cc26xx::gpio::PORT[1],
-            &cc26xx::gpio::PORT[2],
-            &cc26xx::gpio::PORT[3],
-            &cc26xx::gpio::PORT[5],
-            &cc26xx::gpio::PORT[6],
-            &cc26xx::gpio::PORT[7],
-            &cc26xx::gpio::PORT[8],
-            &cc26xx::gpio::PORT[9],
-            &cc26xx::gpio::PORT[11],
-            &cc26xx::gpio::PORT[12],
-            &cc26xx::gpio::PORT[13],
-            &cc26xx::gpio::PORT[14],
-            &cc26xx::gpio::PORT[16],
-            &cc26xx::gpio::PORT[17],
-            &cc26xx::gpio::PORT[18],
-            &cc26xx::gpio::PORT[19],
-            &cc26xx::gpio::PORT[20],
-            &cc26xx::gpio::PORT[21],
-            &cc26xx::gpio::PORT[22],
-            &cc26xx::gpio::PORT[23],
-            &cc26xx::gpio::PORT[24],
-            &cc26xx::gpio::PORT[25],
-            &cc26xx::gpio::PORT[26],
-            &cc26xx::gpio::PORT[27],
-            &cc26xx::gpio::PORT[30],
-            &cc26xx::gpio::PORT[31]
+            &gpio::PORT[1],
+            &gpio::PORT[2],
+            &gpio::PORT[3],
+            &gpio::PORT[5],
+            &gpio::PORT[6],
+            &gpio::PORT[7],
+            &gpio::PORT[8],
+            &gpio::PORT[9],
+            &gpio::PORT[11],
+            &gpio::PORT[12],
+            &gpio::PORT[13],
+            &gpio::PORT[14],
+            &gpio::PORT[16],
+            &gpio::PORT[17],
+            &gpio::PORT[18],
+            &gpio::PORT[19],
+            &gpio::PORT[20],
+            &gpio::PORT[21],
+            &gpio::PORT[22],
+            &gpio::PORT[23],
+            &gpio::PORT[24],
+            &gpio::PORT[25],
+            &gpio::PORT[26],
+            &gpio::PORT[27],
+            &gpio::PORT[30],
+            &gpio::PORT[31]
         ]
     );
     let gpio = static_init!(
-        capsules::gpio::GPIO<'static, cc26xx::gpio::GPIOPin>,
+        capsules::gpio::GPIO<'static, gpio::GPIOPin>,
         capsules::gpio::GPIO::new(gpio_pins)
     );
     for pin in gpio_pins.iter() {
         pin.set_client(gpio);
     }
 
-    let rtc = &cc26xx::rtc::RTC;
+    let rtc = &rtc::RTC;
     rtc.start();
 
     let mux_alarm = static_init!(
-        capsules::virtual_alarm::MuxAlarm<'static, cc26xx::rtc::Rtc>,
-        capsules::virtual_alarm::MuxAlarm::new(&cc26xx::rtc::RTC)
+        capsules::virtual_alarm::MuxAlarm<'static, rtc::Rtc>,
+        capsules::virtual_alarm::MuxAlarm::new(&rtc::RTC)
     );
     rtc.set_client(mux_alarm);
 
     let virtual_alarm1 = static_init!(
-        capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+        capsules::virtual_alarm::VirtualMuxAlarm<'static, rtc::Rtc>,
         capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
     );
     let alarm = static_init!(
         capsules::alarm::AlarmDriver<
             'static,
-            capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+            capsules::virtual_alarm::VirtualMuxAlarm<'static, rtc::Rtc>,
         >,
         capsules::alarm::AlarmDriver::new(virtual_alarm1, kernel::Grant::create())
     );
     virtual_alarm1.set_client(alarm);
     let ble_radio_virtual_alarm = static_init!(
-        capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+        capsules::virtual_alarm::VirtualMuxAlarm<'static, rtc::Rtc>,
         capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
     );
 
-    cc26xx::trng::TRNG.enable();
+    trng::TRNG.enable();
     let rng = static_init!(
-        capsules::rng::SimpleRng<'static, cc26xx::trng::Trng>,
-        capsules::rng::SimpleRng::new(&cc26xx::trng::TRNG, kernel::Grant::create())
+        capsules::rng::SimpleRng<'static, trng::Trng>,
+        capsules::rng::SimpleRng::new(&trng::TRNG, kernel::Grant::create())
     );
-    cc26xx::trng::TRNG.set_client(rng);
+    trng::TRNG.set_client(rng);
 
     // Use BLE
     radio::RFC.set_client(&radio::BLE);
@@ -215,7 +214,7 @@ pub unsafe fn reset_handler() {
         capsules::ble_advertising_driver::BLE<
             'static,
             radio::ble::Ble,
-            capsules::virtual_alarm::VirtualMuxAlarm<'static, cc26xx::rtc::Rtc>,
+            capsules::virtual_alarm::VirtualMuxAlarm<'static, rtc::Rtc>,
         >,
         capsules::ble_advertising_driver::BLE::new(
             &mut radio::BLE,

@@ -40,13 +40,13 @@
 */
 
 #[allow(unused_variables, unused_mut)]
-use cc26xx::setup::oscfh;
+pub mod oscfh;
 
 #[allow(unused_variables, unused_mut)]
-use cc26xx::setup::ddi;
+mod ddi;
 
 #[allow(unused_variables, unused_mut)]
-use cc26xx::setup::adi;
+mod adi;
 
 pub fn perform() {
     unsafe { setup_trim_device() }

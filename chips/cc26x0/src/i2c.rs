@@ -1,5 +1,5 @@
-use cc26xx::prcm;
-use cc26xx::ioc;
+use prcm;
+use ioc;
 use cc26xx::gpio;
 use kernel::hil::gpio::Pin;
 use core::cell::Cell;

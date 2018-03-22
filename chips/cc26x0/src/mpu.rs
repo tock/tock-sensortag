@@ -1,6 +1,6 @@
 use kernel::hil::gpio::Pin;
 use kernel::hil;
-use cc26xx::ioc;
+use ioc;
 use i2c::I2cInterface;
 use core::cell::Cell;
 use sensor::Sensor;

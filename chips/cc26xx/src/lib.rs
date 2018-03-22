@@ -11,16 +11,12 @@ extern crate kernel;
 extern crate bitfield;
 
 pub mod aon;
-pub mod aux;
 pub mod rtc;
 pub mod gpio;
 pub mod ioc;
-pub mod osc;
 pub mod prcm;
 pub mod ccfg;
 pub mod trng;
-pub mod radio;
-pub mod timer;
 pub mod peripheral_interrupts;
 
 // Since the setup code is converted from C -> Rust, we

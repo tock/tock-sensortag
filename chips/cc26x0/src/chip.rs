@@ -1,9 +1,16 @@
 use cortexm3::{self, nvic};
-use cc26xx::{gpio,rtc,timer,radio};
+use cc26xx::gpio;
 use cc26xx::peripheral_interrupts::*;
 
+const X0_RF_CPE1: u32 = 2;
+const X0_RF_CPE0: u32 = 9;
+const X0_RF_CMD_ACK: u32 = 11;
+
+use radio;
+use timer;
 use uart;
 use kernel;
+use rtc;
 
 pub struct Cc26x0 {
     mpu: (),
@@ -38,7 +45,9 @@ impl kernel::Chip for Cc26x0 {
                 match interrupt {
                     GPIO => gpio::PORT.handle_interrupt(),
                     AON_RTC => rtc::RTC.handle_interrupt(),
+
                     UART0 => uart::UART0.handle_interrupt(),
+
                     GPT0A => timer::GPT0.handle_interrupt(),
                     GPT0B => timer::GPT0.handle_interrupt(),
                     GPT1A => timer::GPT1.handle_interrupt(),
@@ -48,9 +57,9 @@ impl kernel::Chip for Cc26x0 {
                     GPT3A => timer::GPT3.handle_interrupt(),
                     GPT3B => timer::GPT3.handle_interrupt(),
 
-                    RF_CMD_ACK => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::CmdAck),
-                    RF_CPE0 => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::Cpe0),
-                    RF_CPE1 => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::Cpe1),
+                    X0_RF_CMD_ACK => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::CmdAck),
+                    X0_RF_CPE0 => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::Cpe0),
+                    X0_RF_CPE1 => radio::RFC.handle_interrupt(radio::rfc::RfcInterrupt::Cpe1),
 
                     // AON Programmable interrupt
                     // We need to ignore JTAG events since some debuggers emit these

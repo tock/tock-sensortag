@@ -1,52 +1,71 @@
-use core::cell::Cell;
-use kernel::common::VolatileCell;
+//! UART driver, cc26xx family
+use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
 use kernel::hil::gpio::Pin;
 use kernel::hil::uart;
+use core::cell::Cell;
 use kernel;
-use cc26xx::{prcm,gpio,peripheral_interrupts};
 
-pub const UART_CTL_UARTEN: u32 = 1;
-pub const UART_CTL_TXE: u32 = 1 << 8;
-pub const UART_CTL_RXE: u32 = 1 << 9;
-pub const UART_LCRH_FEN: u32 = 1 << 4;
-pub const UART_FR_BUSY: u32 = 1 << 3;
-pub const UART_INT_ALL: u32 = 0x7F2;
-pub const UART_INT_RX: u32 = 0x010;
-pub const UART_INT_RT: u32 = 0x040;
-pub const UART_FIFO_TX7_8: u32 = 0x04;          // Transmit interrupt at 7/8 Full
-pub const UART_FIFO_RX4_8: u32 = 0x10;          // Receive interrupt at 1/2 Full
-pub const UART_FR_TXFF: u32 = 0x20;
-pub const UART_CONF_WLEN_8: u32 = 0x60;
-pub const UART_CONF_BAUD_RATE: u32 = 115200;
-
-pub const MCU_CLOCK: u32 = 48_000_000;
+use prcm;
+use cc26xx::gpio;
+use ioc;
 
 pub const UART_BASE: usize = 0x4000_1000;
+pub const MCU_CLOCK: u32 = 48_000_000;
 
 #[repr(C)]
-pub struct Registers {
-    pub dr: VolatileCell<u32>,
-    pub rsr_ecr: VolatileCell<u32>,
-    _reserved0: [VolatileCell<u8>; 0x10],
-    pub fr: VolatileCell<u32>,
-    _reserved1: [VolatileCell<u8>; 0x8],
-    pub ibrd: VolatileCell<u32>,
-    pub fbrd: VolatileCell<u32>,
-    pub lcrh: VolatileCell<u32>,
-    pub ctl: VolatileCell<u32>,
-    pub ifls: VolatileCell<u32>,
-    pub imsc: VolatileCell<u32>,
-    pub ris: VolatileCell<u32>,
-    pub mis: VolatileCell<u32>,
-    pub icr: VolatileCell<u32>,
-    pub dmactl: VolatileCell<u32>,
+struct Registers {
+    dr: ReadWrite<u32>,
+    rsr_ecr: ReadWrite<u32>,
+    _reserved0: [u8; 0x10],
+    fr: ReadOnly<u32, Flags::Register>,
+    _reserved1: [u8; 0x8],
+    ibrd: ReadWrite<u32, IntDivisor::Register>,
+    fbrd: ReadWrite<u32, FracDivisor::Register>,
+    lcrh: ReadWrite<u32, LineControl::Register>,
+    ctl: ReadWrite<u32, Control::Register>,
+    ifls: ReadWrite<u32>,
+    imsc: ReadWrite<u32, Interrupts::Register>,
+    ris: ReadOnly<u32, Interrupts::Register>,
+    mis: ReadOnly<u32, Interrupts::Register>,
+    icr: WriteOnly<u32, Interrupts::Register>,
+    dmactl: ReadWrite<u32>,
 }
+
+register_bitfields![
+    u32,
+    Control [
+        UART_ENABLE OFFSET(0) NUMBITS(1) [],
+        TX_ENABLE OFFSET(8) NUMBITS(1) [],
+        RX_ENABLE OFFSET(9) NUMBITS(1) []
+    ],
+    LineControl [
+        FIFO_ENABLE OFFSET(4) NUMBITS(1) [],
+        WORD_LENGTH OFFSET(5) NUMBITS(2) [
+            Len5 = 0x0,
+            Len6 = 0x1,
+            Len7 = 0x2,
+            Len8 = 0x3
+        ]
+    ],
+    IntDivisor [
+        DIVISOR OFFSET(0) NUMBITS(16) []
+    ],
+    FracDivisor [
+        DIVISOR OFFSET(0) NUMBITS(6) []
+    ],
+    Flags [
+        TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
+    ],
+    Interrupts [
+        ALL_INTERRUPTS OFFSET(0) NUMBITS(12) []
+    ]
+];
 
 pub struct UART {
     regs: *const Registers,
     client: Cell<Option<&'static uart::Client>>,
-    tx_pin: Option<&'static gpio::GPIOPin>,
-    rx_pin: Option<&'static gpio::GPIOPin>,
+    tx_pin: Cell<Option<u8>>,
+    rx_pin: Cell<Option<u8>>,
 }
 
 pub static mut UART0: UART = UART::new();
@@ -56,29 +75,39 @@ impl UART {
         UART {
             regs: UART_BASE as *mut Registers,
             client: Cell::new(None),
-            tx_pin: None,
-            rx_pin: None,
+            tx_pin: Cell::new(None),
+            rx_pin: Cell::new(None),
         }
     }
 
-    pub fn set_pins(&mut self, tx_pin: &'static gpio::GPIOPin, rx_pin: &'static gpio::GPIOPin) {
-        self.tx_pin = Some(tx_pin);
-        self.rx_pin = Some(rx_pin);
+    pub fn set_pins(&self, tx_pin: u8, rx_pin: u8) {
+        self.tx_pin.set(Some(tx_pin));
+        self.rx_pin.set(Some(rx_pin));
     }
 
     pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
-        let ctl_val = UART_CTL_UARTEN | UART_CTL_TXE | UART_CTL_RXE;
+        let tx_pin = match self.tx_pin.get() {
+            Some(pin) => pin,
+            None => panic!("Tx pin not configured for UART")
+        };
 
-        /*
-        * Make sure the TX pin is output / high before assigning it to UART control
-        * to avoid falling edge glitches
-        */
-        self.tx_pin.unwrap().make_output();
-        self.tx_pin.unwrap().set();
+        let rx_pin = match self.rx_pin.get() {
+            Some(pin) => pin,
+            None => panic!("Rx pin not configured for UART")
+        };
 
-        // Map UART signals to IO pin
-        self.tx_pin.unwrap().iocfg().enable_uart_tx();
-        self.rx_pin.unwrap().iocfg().enable_uart_rx();
+        unsafe {
+            /*
+            * Make sure the TX pin is output/high before assigning it to UART control
+            * to avoid falling edge glitches
+            */
+            gpio::PORT[tx_pin as usize].make_output();
+            gpio::PORT[tx_pin as usize].set();
+
+            // Map UART signals to IO pin
+            ioc::IOCFG[tx_pin as usize].enable_uart_tx();
+            ioc::IOCFG[rx_pin as usize].enable_uart_rx();
+        }
 
         // Disable the UART before configuring
         self.disable();
@@ -87,14 +116,15 @@ impl UART {
 
         // Set word length
         let regs = unsafe { &*self.regs };
-        regs.lcrh.set(UART_CONF_WLEN_8);
+        regs.lcrh.write(LineControl::WORD_LENGTH::Len8);
 
-        // Set fifo interrupt level
-        regs.ifls.set(UART_FIFO_TX7_8 | UART_FIFO_RX4_8);
         self.fifo_enable();
 
-        // Enable, TX, RT and UART
-        regs.ctl.set(ctl_val);
+        // Enable UART, RX and TX
+        regs.ctl.write(Control::UART_ENABLE::SET
+            + Control::RX_ENABLE::SET
+            + Control::TX_ENABLE::SET
+        );
     }
 
     fn power_and_clock(&self) {
@@ -106,71 +136,58 @@ impl UART {
     fn set_baud_rate(&self, baud_rate: u32) {
         // Fractional baud rate divider
         let div = (((MCU_CLOCK * 8) / baud_rate) + 1) / 2;
-
         // Set the baud rate
         let regs = unsafe { &*self.regs };
-        regs.ibrd.set(div / 64);
-        regs.fbrd.set(div % 64);
+        regs.ibrd.write(IntDivisor::DIVISOR.val(div / 64));
+        regs.fbrd.write(FracDivisor::DIVISOR.val(div % 64));
     }
 
     fn fifo_enable(&self) {
         let regs = unsafe { &*self.regs };
-        regs.lcrh.set(regs.lcrh.get() | UART_LCRH_FEN);
+        regs.lcrh.modify(LineControl::FIFO_ENABLE::SET);
     }
 
     fn fifo_disable(&self) {
         let regs = unsafe { &*self.regs };
-        regs.lcrh.set(regs.lcrh.get() & !UART_LCRH_FEN);
+        regs.lcrh.modify(LineControl::FIFO_ENABLE::CLEAR);
     }
 
     pub fn disable(&self) {
         self.fifo_disable();
         let regs = unsafe { &*self.regs };
-        regs.ctl.set(regs.ctl.get() & !(UART_CTL_RXE | UART_CTL_TXE | UART_CTL_UARTEN));
+        regs.ctl.modify(Control::UART_ENABLE::CLEAR
+            + Control::TX_ENABLE::CLEAR
+            + Control::RX_ENABLE::CLEAR);
     }
 
     pub fn disable_interrupts(&self) {
-        // Disable all UART module interrupts
+        // Disable all UART interrupts
         let regs = unsafe { &*self.regs };
-        regs.imsc.set(regs.imsc.get() & !UART_INT_ALL);
-
+        regs.imsc.modify(Interrupts::ALL_INTERRUPTS::CLEAR);
         // Clear all UART interrupts
-        regs.icr.set(UART_INT_ALL);
+        regs.icr.write(Interrupts::ALL_INTERRUPTS::SET);
     }
 
-    pub fn enable_interrupts(&self) {
-        // Clear all UART interrupts
+    pub fn handle_interrupt(&self) {
         let regs = unsafe { &*self.regs };
-        regs.icr.set(UART_INT_ALL);
-
-        // We don't care about TX interrupts
-        regs.imsc.set(regs.imsc.get() | UART_INT_RT | UART_INT_RX);
+        // Get status bits
+        #[allow(unused)]
+        let flags: u32 = regs.fr.get();
+        // Clear interrupts
+        regs.icr.write(Interrupts::ALL_INTERRUPTS::SET);
     }
 
     pub fn send_byte(&self, c: u8) {
-        // Wait for space
+        // Wait for space in FIFO
         while !self.tx_ready() {}
-
+        // Put byte in data register
         let regs = unsafe { &*self.regs };
         regs.dr.set(c as u32);
     }
 
     pub fn tx_ready(&self) -> bool {
         let regs = unsafe { &*self.regs };
-        regs.fr.get() & UART_FR_TXFF == 0
-    }
-
-    pub fn handle_interrupt(&self) {
-        self.power_and_clock();
-
-        // Get status bits
-        let regs = unsafe { &*self.regs };
-        #[allow(unused)]
-        let flags: u32 = regs.fr.get();
-
-        // Clear interrupts
-        regs.icr.set(UART_INT_ALL);
-
+        !regs.fr.is_set(Flags::TX_FIFO_FULL)
     }
 }
 
@@ -181,10 +198,8 @@ impl kernel::hil::uart::UART for UART {
 
     fn init(&self, params: kernel::hil::uart::UARTParams) {
         self.power_and_clock();
-        self.disable();
         self.disable_interrupts();
         self.configure(params);
-        self.enable_interrupts();
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
@@ -200,7 +215,5 @@ impl kernel::hil::uart::UART for UART {
     }
 
     #[allow(unused)]
-    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {
-        unimplemented!()
-    }
+    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
 }
