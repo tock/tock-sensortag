@@ -7,10 +7,17 @@ $(call check_defined, PACKAGE_NAME)
 TOCK_ARCH = cortex-m3
 BOARD_BUILDDIR = $(BUILDDIR)/$(TOCK_ARCH)
 
+PROG_BASE=0x10000
+
+# Relative working directory, get the directory of *this*
+# specific makefile
+RWD=$(TOCK_USERLAND_BASE_DIR)/../../boards/sensortag
+
 # Upload programs to sensortag
 .PHONY: flash
 flash: $(BOARD_BUILDDIR)/$(TOCK_ARCH).bin $(BUILDDIR)/$(PACKAGE_NAME).tab
-    $(error Cannot flash yet.)
+	$(call check_defined, UNIFLASH_CLI_BASE, See launchxl README for details)
+	@$(UNIFLASH_CLI_BASE)/ccs_base/DebugServer/bin/DSLite flash -c $(RWD)/jtag/cc2650.ccxml -e -f $<,$(PROG_BASE)
 
 .PHONY: program
 program: $(BOARD_BUILDDIR)/$(TOCK_ARCH).bin $(BUILDDIR)/$(PACKAGE_NAME).tab
