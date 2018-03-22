@@ -8,7 +8,7 @@ PLATFORM=sensortag
 DSLITE=$(UNIFLASH_CLI_BASE)/ccs_base/DebugServer/bin/DSLite
 PROG_BASE=0x10000
 
-include ../Makefile.common
+include ../../tock/boards/Makefile.common
 
 apps/%/build/$(TOCK_ARCH)/$(TOCK_ARCH).bin:
 	@make -C apps/$*
