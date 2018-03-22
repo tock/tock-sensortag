@@ -2,6 +2,8 @@
 
 This repository contains ports of Tock for the SensorTag board. Learn more about Tock on [the official website](https://www.tockos.org/).
 
+**NOTE: The SensorTag CC2650STK (latest) does not have a Memory Protection Unit!**
+
 
 ## Getting Started
 
