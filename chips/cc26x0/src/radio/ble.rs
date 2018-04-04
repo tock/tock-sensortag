@@ -42,10 +42,26 @@ pub struct Ble {
 /* BLE RFC Commands */
 const RFC_BLE_ADVERTISE: u16 = 0x1805;
 
+#[allow(unused)]
+#[repr(u16)]
+enum BleAdvertiseCommands {
+    ConnectUndirected = 0x1803,
+    ConnectDirected = 0x1804,
+    NonConnectUndirected = 0x1805,
+
+    // TODO(cpluss): implement scan
+    ScanRequest = 0x1808,
+    ScanUndirected = 0x1806,
+
+    // TODO(cpluss): correct and add these
+    // ScanResponse = 0x04,
+    // ConnectRequest = 0x05,
+}
+
 impl Ble {
     pub const fn new(rfc: &'static rfc::RFCore) -> Ble {
         Ble {
-            rfc: rfc,
+            rfc,
             rx_client: Cell::new(None),
             tx_client: Cell::new(None),
         }
@@ -84,17 +100,60 @@ impl Ble {
     */
     unsafe fn replace_adv_payload_buffer(&self, buf: &'static mut [u8], len: usize)
         -> &'static mut [u8] {
+        const PACKET_ADDR_START: usize = 2;
+        const PACKET_ADDR_END: usize = 8;
+        const PACKET_PAYLOAD_START: usize = 8;
+        const PACKET_HDR_PDU: usize = 0;
+
         // Extract the device address
-        for (i, a) in buf.as_ref()[2..8].iter().enumerate() {
+        for (i, a) in buf.as_ref()[PACKET_ADDR_START..PACKET_ADDR_END].iter().enumerate() {
             DEVICE_ADDRESS[i] = *a;
         }
 
         // Copy the rest of the payload
-        for (i, c) in buf.as_ref()[8..len].iter().enumerate() {
+        for (i, c) in buf.as_ref()[PACKET_PAYLOAD_START..len].iter().enumerate() {
             BLE_ADV_PAYLOAD[i] = *c;
         }
 
-        BLE_ADV_PAYLOAD_LEN = (len - 8) as u8;
+        BLE_ADV_PAYLOAD_LEN = (len - PACKET_PAYLOAD_START) as u8;
+
+        // Reset the packet buffers
+        for i in 0..BLE_PARAMS_BUF.len() {
+            BLE_PARAMS_BUF[i] = 0;
+        }
+        for i in 0..PACKET_BUF.len() {
+            PACKET_BUF[i] = 0;
+        }
+
+        let params: &mut BleAdvertiseParams = &mut *(BLE_PARAMS_BUF.as_mut_ptr() as *mut BleAdvertiseParams);
+        params.device_address = &mut DEVICE_ADDRESS[0] as *mut u8;
+        params.adv_len = BLE_ADV_PAYLOAD_LEN;
+        params.adv_data = BLE_ADV_PAYLOAD.as_ptr() as u32;
+        params.end_time = 0;
+        params.end_trigger = 1;
+
+        let pdu: u8 = buf[PACKET_HDR_PDU];
+        let rfc_command_num: u16 = match pdu {
+            0x00 => BleAdvertiseCommands::ConnectUndirected,
+            0x01 => BleAdvertiseCommands::ConnectDirected,
+            0x02 => BleAdvertiseCommands::NonConnectUndirected,
+            _ => panic!("{} ble PDU not implemented yet.", pdu)
+        } as u16;
+
+        let cmd: &mut BleAdvertise = &mut *(PACKET_BUF.as_mut_ptr() as *mut BleAdvertise);
+        cmd.command_no = rfc_command_num;
+        cmd.condition = {
+            let mut cnd = rfc_commands::RfcCondition(0);
+            cnd.set_rule(1); // COND_NEVER
+            cnd
+        };
+        cmd.whitening = {
+            let mut wht = BleWhitening(0);
+            wht.set_override(true);
+            wht.set_init(0x51);
+            wht
+        };
+        cmd.params = BLE_PARAMS_BUF.as_ptr() as u32;
 
         buf
     }
@@ -110,39 +169,8 @@ impl Ble {
         };
 
         unsafe {
-            for i in 0..BLE_PARAMS_BUF.len() {
-                BLE_PARAMS_BUF[i] = 0;
-            }
-            for i in 0..PACKET_BUF.len() {
-                PACKET_BUF[i] = 0;
-            }
-
-            let params: &mut BleAdvertiseParams = &mut *(BLE_PARAMS_BUF.as_mut_ptr() as *mut BleAdvertiseParams);
-
-            params.device_address = &mut DEVICE_ADDRESS[0] as *mut u8;
-            params.adv_len = BLE_ADV_PAYLOAD_LEN;
-            params.adv_data = BLE_ADV_PAYLOAD.as_ptr() as u32;
-            params.end_time = 0;
-            params.end_trigger = 1;
-
             let cmd: &mut BleAdvertise = &mut *(PACKET_BUF.as_mut_ptr() as *mut BleAdvertise);
-
-            cmd.command_no = RFC_BLE_ADVERTISE;
-            cmd.condition = {
-                let mut cnd = rfc_commands::RfcCondition(0);
-                cnd.set_rule(1); // COND_NEVER
-                cnd
-            };
             cmd.channel = channel;
-            cmd.whitening = {
-                let mut wht = BleWhitening(0);
-                wht.set_override(true);
-                wht.set_init(0x51);
-                wht
-            };
-            cmd.params = BLE_PARAMS_BUF.as_ptr() as u32;
-
-            // Queue the advertisement command
             self.rfc.send(cmd);
         }
     }
