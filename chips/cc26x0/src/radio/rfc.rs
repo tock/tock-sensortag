@@ -140,12 +140,20 @@ pub struct RFCore {
     mode: Cell<Option<RfcMode>>,
 }
 
-/*
-    RFCoreClient - Client to interface
-    with protocol, to get callbacks when a command has been processed.
-*/
+
+///  RFCoreClient - Client to interface
+///  with protocol, to get callbacks when a command has been processed.
 pub trait RFCoreClient {
+    /// command_done
+    ///
+    /// Called once a command has been successfully *processed and sent*
     fn command_done(&self);
+
+    /// command_ack
+    ///
+    /// Called once a command has been ACKed by the radio MCU
+    /// This does not mean that the command has been sent.
+    fn command_ack(&self, cmd: u32);
 }
 
 impl RFCore {
@@ -344,6 +352,7 @@ impl RFCore {
         while timeout < MAX_TIMEOUT {
             status = bell_regs.cmdsta.get();
             if (status & 0xFF) == 0x01 {
+                self.client.get().map(|client| client.command_ack(command));
                 return RfcResult::Ok;
             }
 

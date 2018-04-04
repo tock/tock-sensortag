@@ -178,6 +178,9 @@ impl Ble {
 
 impl rfc::RFCoreClient for Ble {
     fn command_done(&self) {
+    }
+
+    fn command_ack(&self, _cmd: u32) {
         self.tx_client
             .get()
             .map(|client| client.transmit_event(kernel::ReturnCode::SUCCESS));
