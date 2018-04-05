@@ -86,7 +86,7 @@ impl Ble {
         osc::OSCILLATOR_CONTROL.switch_to_hf_xosc();
 
         unsafe {
-            let reg_overrides: u32 = (&BLE_OVERRIDES[0] as *const u32) as u32;
+            let reg_overrides: u32 = BLE_OVERRIDES.as_mut_ptr() as u32; //(&BLE_OVERRIDES[0] as *const u32) as u32;
             self.rfc.setup(reg_overrides);
         }
     }
@@ -179,6 +179,9 @@ impl Ble {
 
 impl rfc::RFCoreClient for Ble {
     fn command_done(&self) {
+    }
+
+    fn tx_done(&self) {
         self.tx_client
             .get()
             .map(|client| client.transmit_event(kernel::ReturnCode::SUCCESS));

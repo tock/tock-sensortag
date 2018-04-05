@@ -144,6 +144,8 @@ pub struct RFCore {
 */
 pub trait RFCoreClient {
     fn command_done(&self);
+
+    fn tx_done(&self);
 }
 
 impl RFCore {
@@ -203,10 +205,12 @@ impl RFCore {
         // All interrupts to Cpe0 except INTERNAL_ERROR which is routed to Cpe1
         bell_regs.rf_cpe_interrupt_vector_sel.write(RFCpeInterrupts::INTERNAL_ERROR::SET);
         // Enable INTERNAL_ERROR and LOAD_DONE
+        //bell_regs.rf_cpe_interrupt_enable.set(0xFFFFFFFF);
         bell_regs.rf_cpe_interrupt_enable.write(
             RFCpeInterrupts::INTERNAL_ERROR::SET
                 + RFCpeInterrupts::COMMAND_DONE::SET
                 + RFCpeInterrupts::BOOT_DONE::SET
+                + RFCpeInterrupts::TX_DONE::SET
         );
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
@@ -392,10 +396,16 @@ impl RFCore {
             }
             RfcInterrupt::Cpe0 => {
                 let command_done = bell_regs.rf_cpe_interrupt_flags.is_set(RFCpeInterrupts::COMMAND_DONE);
+                let tx_done = bell_regs.rf_cpe_interrupt_flags.is_set(RFCpeInterrupts::TX_DONE);
+
                 bell_regs.rf_cpe_interrupt_flags.set(0);
 
                 if command_done {
                     self.client.get().map(|client| client.command_done());
+                }
+
+                if tx_done {
+                    self.client.get().map(|client| client.tx_done());
                 }
             }
             RfcInterrupt::Cpe1 => {
