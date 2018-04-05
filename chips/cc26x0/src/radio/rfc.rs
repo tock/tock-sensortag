@@ -18,12 +18,12 @@
 // RFC Commands are located at the bottom
 use self::rfc_commands::*;
 use prcm;
-
 use rtc;
 
 use kernel::common::regs::{ReadOnly, ReadWrite};
 use kernel::common::VolatileCell;
 use core::cell::Cell;
+use core::result::Result;
 
 #[repr(C)]
 pub struct RfcBellRegisters {
@@ -97,8 +97,9 @@ const RFC_SETUP: u16 = 0x0802;
 /*
     Power masks in order to enable certain clocks in the RFC
 */
-const RFC_PWR_RFC: u32 = 0x01; // Main module
-                               // Command and Packet Engine (CPE)
+const RFC_PWR_RFC: u32 = 0x01;
+// Main module
+// Command and Packet Engine (CPE)
 const RFC_PWR_CPE: u32 = 0x02;
 const RFC_PWR_CPERAM: u32 = 0x04;
 // Modem module
@@ -114,10 +115,7 @@ const RFC_PWR_PHA: u32 = 0x100;
 // Frequence Synthesizer Calibration Accelerator (FCSCA)
 const RFC_PWR_FSCA: u32 = 0x200;
 
-pub enum RfcResult {
-    Ok,
-    Error(u32),
-}
+type RfcResult = Result<(), u32>;
 
 pub enum RfcInterrupt {
     Cpe0,
@@ -169,6 +167,7 @@ impl RFCore {
     pub fn set_mode(&self, mode: RfcMode) {
         let rf_mode = match mode {
             RfcMode::BLE => 0x01,
+            //RfcMode::BLE => 0x05,
             _ => panic!("No other mode than BLE is currently supported for RF!\r")
         };
 
@@ -212,29 +211,21 @@ impl RFCore {
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
 
-        self.ensure_ok(|| {
-            self.send_direct(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40))
-        });
+        self.send_direct(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40))
+            .ok().expect("could not initialize radio module.");
 
         // Request the bus
-        self.ensure_ok(|| {
-            self.send_direct(&DirectCommand::new(RFC_BUS_REQUEST, 1))
-        });
+        self.send_direct(&DirectCommand::new(RFC_BUS_REQUEST, 1))
+            .ok().expect("could not request the bus to the radio module.");
 
         // Send a ping command to verify that the core is ready and alive
-        self.ensure_ok(|| {
-            self.send_direct(&DirectCommand::new(RFC_PING, 0))
-        });
+        self.send_direct(&DirectCommand::new(RFC_PING, 0))
+            .ok().expect("could not ping the radio module.");
     }
 
     pub fn setup(&self, reg_override: u32) {
-        let mode = self.mode
-            .get()
-            .unwrap_or_else(|| {
-                panic!("No RF mode selected, can not setup.\r")
-            });
-
-        let setup_cmd = RfcCommandRadioSetup {
+        let mode = self.mode.get().expect("No RF mode selected, can not setup.");
+        let cmd = RfcCommandRadioSetup {
             command_no: RFC_SETUP,
             status: 0,
             p_nextop: 0,
@@ -243,6 +234,7 @@ impl RFCore {
             condition: {
                 let mut cond = RfcCondition(0);
                 cond.set_rule(0x01); // COND_NEVER
+                //cond.set_rule(5); // COND_SKIP_ON_FALSE
                 cond
             },
             mode: mode as u8,
@@ -254,10 +246,13 @@ impl RFCore {
                 cfg
             },
             tx_power: 0x9330,
-            reg_override: reg_override,
+            reg_override,
         };
 
-        self.ensure_ok(move || self.send(&setup_cmd));
+        self.send(&cmd)
+            .and_then(|_| self.wait(&cmd))
+            .ok()
+            .expect("Could not start radio timer.");
     }
 
     pub fn start_rat(&self) {
@@ -276,18 +271,47 @@ impl RFCore {
             rat0: 0,
         };
 
-        self.ensure_ok(move || self.send(&cmd));
+        self.send(&cmd)
+            .and_then(|_| self.wait(&cmd))
+            .ok()
+            .expect("Could not start radio timer.");
     }
 
-    pub fn ensure_ok<F>(&self, closure: F)
-        where F: Fn() -> RfcResult
-    {
-        match closure() {
-            RfcResult::Error(status) => panic!("RFC error occurred, status=0x{:x}\r", status),
-            RfcResult::Ok => (),
-        }
+    /// Wait for a radio operation command (immediate commands, or scheduled).
+    pub fn send<T>(&self, cmd: &T) -> RfcResult {
+        let command = {
+            /*
+                A radio op / immediate command structure of CMDR:
+                bit  31                    16               8               2    0
+                    ----------------------------------------------------------------
+                    | Command Address                                       | 0  0 |
+                    ----------------------------------------------------------------
+            */
+            (cmd as *const T) as u32
+        };
+
+        self.post_cmdr(command)
     }
 
+    /// Wait for a radio operation command (immediate commands, or scheduled).
+    ///     NOTE: this is blocking until it times out (~300ms)
+    pub fn wait<T>(&self, cmd: &T) -> RfcResult {
+        let command = {
+            /*
+                A radio op / immediate command structure of CMDR:
+                bit  31                    16               8               2    0
+                    ----------------------------------------------------------------
+                    | Command Address                                       | 0  0 |
+                    ----------------------------------------------------------------
+            */
+            (cmd as *const T) as u32
+        };
+
+        self.wait_cmdr(command)
+    }
+
+    /// Sends a direct encoded command to the radio doorbell. This is used by the RFC module
+    /// to set things up (eg. enter BLE mode).
     fn send_direct(&self, dir_cmd: &DirectCommand) -> RfcResult {
         /*
             A direct command structure of CMDR:
@@ -305,24 +329,9 @@ impl RFCore {
         self.post_cmdr(command)
     }
 
-    pub fn send<T>(&self, cmd: &T) -> RfcResult {
-        let command = {
-            /*
-                A radio op / immediate command structure of CMDR:
-                bit  31                    16               8               2    0
-                    ----------------------------------------------------------------
-                    | Command Address                                       | 0  0 |
-                    ----------------------------------------------------------------
-            */
-            (cmd as *const T) as u32
-        };
 
-        self.post_cmdr(command)
-    }
-
-    /*
-        Post a command to (CMDR) the radio doorbell.
-    */
+    /// Post a command to the (CMDR) radio doorbell. Should only be used internally by the RFC
+    /// module.
     fn post_cmdr(&self, command: u32) -> RfcResult {
         // Check if the radio is accessible or not
         if !prcm::Power::is_enabled(prcm::PowerDomain::RFC) {
@@ -331,11 +340,10 @@ impl RFCore {
 
         let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
 
-        // CMDR is only writeable once it is zeroed
-        while bell_regs.cmdr.get() != 0 {}
-
         // Set the command
         bell_regs.cmdr.set(command);
+
+        //debug_verbose!("post_cmdr: 0x{:x}\r", command);
 
         // Wait for ACK from the radio MCU
         let mut timeout: u32 = 0;
@@ -344,13 +352,35 @@ impl RFCore {
         while timeout < MAX_TIMEOUT {
             status = bell_regs.cmdsta.get();
             if (status & 0xFF) == 0x01 {
-                return RfcResult::Ok;
+                return Ok(());
             }
 
             timeout += 1;
         }
 
-        RfcResult::Error(status)
+        Err(status)
+    }
+
+    /*
+        Waits for a Radio Operation (struct, not direct)
+        to be done before continuing, has a timeout.
+    */
+    fn wait_cmdr(&self, command: u32) -> RfcResult {
+        let command_regs: &RfcCommandCommon = unsafe { &*(command as *const RfcCommandCommon) };
+
+        let mut timeout: u32 = 0;
+        let mut status = 0;
+        const MAX_TIMEOUT: u32 = 0x2FFFFFF;
+        while timeout < MAX_TIMEOUT {
+            status = command_regs.status.get();
+            if status == 0x0400 {
+                return Ok(());
+            }
+
+            timeout += 1;
+        }
+
+        Err(status as u32)
     }
 
     pub fn handle_interrupt(&self, int: RfcInterrupt) {
@@ -382,6 +412,8 @@ impl RFCore {
 }
 
 pub mod rfc_commands {
+    use kernel::common::regs::ReadOnly;
+
     /* Basic direct command */
     pub struct DirectCommand {
         pub command_id: u16,
@@ -395,6 +427,19 @@ pub mod rfc_commands {
                 parameters: param,
             }
         }
+    }
+
+    /* This is common between every command. Use this
+       In order to decode any arbitrary command! */
+    #[allow(unused)]
+    #[repr(C)]
+    pub struct RfcCommandCommon {
+        pub command_no: ReadOnly<u16>,
+        pub status: ReadOnly<u16>,
+        pub p_nextop: ReadOnly<u32>,
+        pub ratmr: ReadOnly<u32>,
+        pub start_trigger: ReadOnly<u8>,
+        pub condition: RfcCondition,
     }
 
     /* In order to properly setup the radio mode (e.g BLE or IEEE) */
@@ -426,7 +471,7 @@ pub mod rfc_commands {
     }
 
     /* Bitfields used by many commands */
-    bitfield!{
+    bitfield! {
         #[derive(Copy, Clone)]
         pub struct RfcTrigger(u8);
         impl Debug;
@@ -436,7 +481,7 @@ pub mod rfc_commands {
         pub _past_trigger, _set_past_trigger  : 7;
     }
 
-    bitfield!{
+    bitfield! {
         #[derive(Copy, Clone)]
         pub struct RfcCondition(u8);
         impl Debug;
@@ -444,7 +489,7 @@ pub mod rfc_commands {
         pub _skip, _set_skip : 7, 4;
     }
 
-    bitfield!{
+    bitfield! {
         #[derive(Copy, Clone)]
         pub struct RfcSetupConfig(u16);
         impl Debug;

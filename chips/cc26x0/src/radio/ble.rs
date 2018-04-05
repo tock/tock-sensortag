@@ -39,9 +39,6 @@ pub struct Ble {
     tx_client: Cell<Option<&'static ble_advertising::TxClient>>,
 }
 
-/* BLE RFC Commands */
-const RFC_BLE_ADVERTISE: u16 = 0x1805;
-
 #[allow(unused)]
 #[repr(u16)]
 enum BleAdvertiseCommands {
@@ -170,8 +167,12 @@ impl Ble {
 
         unsafe {
             let cmd: &mut BleAdvertise = &mut *(PACKET_BUF.as_mut_ptr() as *mut BleAdvertise);
+            cmd.status = 0;
             cmd.channel = channel;
-            self.rfc.send(cmd);
+            match self.rfc.send(cmd) {
+                Err(status) => panic!("Could not send advertisement, status=0x{:x}", status),
+                Ok(()) => ()
+            }
         }
     }
 }
