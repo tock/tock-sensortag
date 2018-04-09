@@ -125,10 +125,22 @@ fn prcm_commit() {
 pub enum PowerDomain {
     // Note: when RFC is to be enabled, you are required to use both
     // power domains (i.e enable RFC on both PowerDomain0 and PowerDomain1)
-    RFC,
-    Serial,
-    Peripherals,
-    VIMS,
+    RFC = 0,
+    Serial = 1,
+    Peripherals = 2,
+    VIMS = 3,
+}
+
+impl From<u32> for PowerDomain {
+    fn from(n: u32) -> Self {
+        match n {
+            0 => PowerDomain::RFC,
+            1 => PowerDomain::Serial,
+            2 => PowerDomain::Peripherals,
+            3 => PowerDomain::VIMS,
+            _ => unimplemented!()
+        }
+    }
 }
 
 pub struct Power(());
@@ -147,6 +159,26 @@ impl Power {
             PowerDomain::RFC => {
                 regs.pd_ctl0.modify(PowerDomain0::RFC_ON::SET);
                 regs.pd_ctl1.modify(PowerDomain1::RFC_ON::SET);
+            },
+            _ => {
+                panic!("Tried to turn on a power domain not yet specified!");
+            }
+        }
+    }
+
+    pub fn disable_domain(domain: PowerDomain) {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+
+        match domain {
+            PowerDomain::Peripherals => {
+                regs.pd_ctl0.modify(PowerDomain0::PERIPH_ON::CLEAR);
+            }
+            PowerDomain::Serial => {
+                regs.pd_ctl0.modify(PowerDomain0::SERIAL_ON::CLEAR);
+            },
+            PowerDomain::RFC => {
+                regs.pd_ctl0.modify(PowerDomain0::RFC_ON::CLEAR);
+                regs.pd_ctl1.modify(PowerDomain1::RFC_ON::CLEAR);
             },
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");

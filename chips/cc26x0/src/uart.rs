@@ -8,6 +8,7 @@ use kernel;
 use prcm;
 use cc26xx::gpio;
 use ioc;
+use power;
 
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
@@ -128,8 +129,9 @@ impl UART {
     }
 
     fn power_and_clock(&self) {
-        prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
+        /*prcm::Power::enable_domain(prcm::PowerDomain::Serial);
+        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };*/
+        power::LPM.register(&UART_POWER_MODULE);
         prcm::Clock::enable_uart_run();
     }
 
@@ -217,3 +219,37 @@ impl kernel::hil::uart::UART for UART {
     #[allow(unused)]
     fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
 }
+
+const UART_PERIPHERAL_ID: u32 = 0x01;
+use power_manager;
+
+pub struct UartPowerModule(());
+
+impl power_manager::PowerModule for UartPowerModule {
+    fn id(&self) -> u32 {
+        UART_PERIPHERAL_ID
+    }
+
+    fn regions(&self) -> &[u32] {
+        &[
+            prcm::PowerDomain::Serial as u32,
+            prcm::PowerDomain::Peripherals as u32,
+        ]
+    }
+
+    fn lowest_sleep_mode(&self) -> u32 {
+        unimplemented!()
+    }
+
+    fn prepare_for_sleep(&self) {
+        unimplemented!()
+    }
+
+    fn wakeup(&self) {
+        unimplemented!()
+    }
+}
+
+pub const UART_POWER_MODULE: UartPowerModule = UartPowerModule(());
+pub static UART_POWER_DEPENDENCY: power_manager::PowerDependency
+= power_manager::PowerDependency::new(&UART_POWER_MODULE);
