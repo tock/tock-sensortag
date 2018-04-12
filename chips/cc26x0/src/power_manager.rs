@@ -59,40 +59,8 @@ impl<'a> PoweredPeripheral<'a> {
         }
     }
 
-    pub fn identifier(&self) -> u32 {
-        self.client
-            .get()
-            .map_or(0, |client| client.identifier())
-    }
-
-    pub fn lowest_sleep_mode(&self) -> u32 {
-        self.client
-            .get()
-            .map_or(0, |client| client.lowest_sleep_mode())
-    }
-
-    pub fn before_sleep(&self) {
-        self.client
-            .get()
-            .map( |client| client.before_sleep());
-    }
-
-    pub fn after_wakeup(&self) {
-        self.client
-            .get()
-            .map( |client| client.after_wakeup());
-    }
-
-    pub fn power_on(&self) {
-        self.client
-            .get()
-            .map( |client| client.power_on());
-    }
-
-    pub fn power_off(&self) {
-        self.client
-            .get()
-            .map( |client| client.power_off());
+    pub fn client(&self) -> &'a PoweredClient {
+        self.client.get().expect("")
     }
 
     pub fn usage_map<F>(&self, closure: F)
@@ -113,20 +81,18 @@ impl<'a> PoweredPeripheral<'a> {
 ///     is used, and powered on. As well as to power
 ///     on and off specific peripherals.
 ///
-///     It also determines if the chip is ready to go into sleep mode,
-///     by determining whether any region is powered on and can still
-///     function in a lower sleep mode.
-pub struct Manager<'a> {
+///     It also has the functionality to power off
+///     all used peripherals once the MCU is ready
+///     to go to sleep mode, as it's needed in many
+///     cases.
+pub struct PowerManager<'a> {
     /// A list of IDs for powered peripherals
     powered_peripherals: List<'a, PoweredPeripheral<'a>>,
-
-    ///// Need to be able to access the chip and go to sleep mode
-    //_chip: Cell<Option<&'static kernel::Chip>>,
 }
 
-impl<'a> Manager<'a> {
-    pub const fn new() -> Manager<'a> {
-        Manager {
+impl<'a> PowerManager<'a> {
+    pub const fn new() -> PowerManager<'a> {
+        PowerManager {
             powered_peripherals: List::new(),
             //_chip: Cell::new(None),
         }
@@ -139,16 +105,14 @@ impl<'a> Manager<'a> {
     }
 
     /// Request access for a specific peripheral to be used
-    #[no_mangle]
-    #[inline(never)]
     pub fn request(&self, identifier: u32) {
         let powered_peripheral = self.powered_peripherals
             .iter()
-            .find(|p| p.identifier() == identifier)
+            .find(|p| p.client().identifier() == identifier)
             .expect("peripheral requested that has not been registered.");
 
         if powered_peripheral.usage() == 0 {
-            powered_peripheral.power_on();
+            powered_peripheral.client().power_on();
         }
 
         powered_peripheral.usage_map(|usage: u32| usage + 1);
@@ -158,7 +122,7 @@ impl<'a> Manager<'a> {
     pub fn release(&self, identifier: u32) {
         let powered_peripheral = self.powered_peripherals
             .iter()
-            .find(|p| p.identifier() == identifier)
+            .find(|p| p.client().identifier() == identifier)
             .expect("peripheral requested that has not been registered.");
 
         powered_peripheral.usage_map(|usage: u32| {
@@ -170,13 +134,27 @@ impl<'a> Manager<'a> {
         });
 
         if powered_peripheral.usage() == 0 {
-            powered_peripheral.power_off();
+            powered_peripheral.client().power_off();
         }
     }
 
-    /// Progress into the lowest sleep mode possible
-    #[allow(unused)]
-    fn sleep(&self) {
-        unimplemented!()
+    pub fn prepare_sleep(&self) {
+        for peripheral in self.powered_peripherals.iter() {
+            if peripheral.usage() > 0 {
+                peripheral.client().before_sleep();
+                peripheral.client().power_off();
+            }
+        }
     }
+
+    pub fn after_wakeup(&self) {
+        for peripheral in self.powered_peripherals.iter() {
+            if peripheral.usage() > 0 {
+                peripheral.client().power_on();
+                peripheral.client().after_wakeup();
+            }
+        }
+    }
+
+
 }
