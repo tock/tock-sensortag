@@ -1,161 +1,175 @@
 use core::cell::Cell;
+use kernel::common::{List, ListLink, ListNode};
 
-/// PowerRegionManager
-///     Used to enable or disable specific power
-///     regions on the chip. Provide an enum
-///     of available regions.
-pub trait PowerRegionManager {
-    /// Enable a certain power region on the chip
-    fn enable(&self, region: u32);
+/// PoweredClient
+///     A peripheral which is powered (almost all) and manages
+///     its own requests of powers - to be used in conjunction with a
+///     PoweredClient.
+///
+///     NOTE: you need to register all Powered Peripherals
+///           during initialisation.
+pub trait PoweredClient {
+    /// Identifier for this peripheral. Used to distinguish
+    /// peripherals between each other.
+    fn identifier(&self) -> u32;
 
-    /// Disable a certain power region on the chip
-    fn disable(&self, region: u32);
+    /// Power on this peripheral
+    fn power_on(&self);
 
-    /// Check to see whether a specific power region
-    /// is already enabled or not.
-    fn is_enabled(&self, region: u32) -> bool;
+    /// Power off this peripheral
+    fn power_off(&self);
 
-    /// Go to a specific sleep mode
-    fn sleep(&self, mode: u32);
-}
+    /// This is invoked before the chip goes into sleep mode, if the
+    /// peripheral is powered.
+    fn before_sleep(&self);
 
-/// PowerModule
-///     A power module is a contract of what power region
-///     a specific peripheral requires in order to function.
-pub trait PowerModule {
-    /// A unique ID identifying this power module.
-    /// This is used when comparing power modules:
-    fn id(&self) -> u32;
-
-    /// This is the region which this peripheral
-    /// requires in order to function properly (eg. Peripheral power domain).
-    fn regions(&self) -> &[u32];
+    /// This is invoked once the chip has woken up from any sleep mode.
+    fn after_wakeup(&self);
 
     /// This is the lowest sleep mode this module will still be able
     /// to function in.
     fn lowest_sleep_mode(&self) -> u32;
-
-    /// This is invoked before the chip goes into sleep mode, if the
-    /// peripheral is powered.
-    fn prepare_for_sleep(&self);
-
-    /// This is invoked once the chip has woken up from any sleep mode.
-    fn wakeup(&self);
 }
 
-/// Power dependency
-///     Sets up a power constraint for a module, and includes
-///     the number of times it has been registered.
-pub struct PowerDependency {
-    // Once we unregister a power dependency
-    // we don't delete it, just set it to unused. There won't
-    // be that many power modules, and they are all statically
-    // for each board.
-    used: Cell<bool>,
-    module: &'static PowerModule,
+pub struct PoweredPeripheral<'a> {
+    client: Cell<Option<&'a PoweredClient>>,
+    next: ListLink<'a, PoweredPeripheral<'a>>,
+    usage_count: Cell<u32>,
 }
 
-impl PowerDependency {
-    pub const fn new<M: PowerModule>(module: &'static M) -> PowerDependency {
-        PowerDependency {
-            used: Cell::new(false),
-            module,
-        }
+impl<'a> ListNode<'a, PoweredPeripheral<'a>> for PoweredPeripheral<'a> {
+    fn next(&self) -> &'a ListLink<PoweredPeripheral<'a>> {
+        &self.next
     }
 }
 
-use core::marker::Sync;
-unsafe impl Sync for PowerDependency {
+impl<'a> PoweredPeripheral<'a> {
+    pub const fn new(client: &'a PoweredClient) -> PoweredPeripheral<'a> {
+        PoweredPeripheral {
+            client: Cell::new(Some(client)),
+            next: ListLink::empty(),
+            usage_count: Cell::new(0),
+        }
+    }
+
+    pub fn identifier(&self) -> u32 {
+        self.client
+            .get()
+            .map_or(0, |client| client.identifier())
+    }
+
+    pub fn lowest_sleep_mode(&self) -> u32 {
+        self.client
+            .get()
+            .map_or(0, |client| client.lowest_sleep_mode())
+    }
+
+    pub fn before_sleep(&self) {
+        self.client
+            .get()
+            .map( |client| client.before_sleep());
+    }
+
+    pub fn after_wakeup(&self) {
+        self.client
+            .get()
+            .map( |client| client.after_wakeup());
+    }
+
+    pub fn power_on(&self) {
+        self.client
+            .get()
+            .map( |client| client.power_on());
+    }
+
+    pub fn power_off(&self) {
+        self.client
+            .get()
+            .map( |client| client.power_off());
+    }
+
+    pub fn usage_map<F>(&self, closure: F)
+    where
+        F: FnOnce(u32) -> u32,
+    {
+        let val = self.usage_count.get();
+        self.usage_count.set(closure(val))
+    }
+
+    pub fn usage(&self) -> u32 {
+        self.usage_count.get()
+    }
 }
 
 /// Power manager
-///     Responsible to keep track of what power regions
-///     is needed, and powered on. As well as to power
-///     on and off specific regions once they are no longer
-///     required.
+///     Responsible to keep track of what peripherals
+///     is used, and powered on. As well as to power
+///     on and off specific peripherals.
 ///
 ///     It also determines if the chip is ready to go into sleep mode,
 ///     by determining whether any region is powered on and can still
 ///     function in a lower sleep mode.
-pub struct PowerManager<Prm: PowerRegionManager> {
-    dependencies: &'static [&'static PowerDependency],
-    region_manager: Prm,
+pub struct Manager<'a> {
+    /// A list of IDs for powered peripherals
+    powered_peripherals: List<'a, PoweredPeripheral<'a>>,
+
+    ///// Need to be able to access the chip and go to sleep mode
+    //_chip: Cell<Option<&'static kernel::Chip>>,
 }
 
-impl<Prm: PowerRegionManager> PowerManager<Prm> {
-    pub const fn new(prm: Prm, dependencies: &'static [&'static PowerDependency]) -> PowerManager<Prm> {
-        PowerManager {
-            dependencies,
-            region_manager: prm,
+impl<'a> Manager<'a> {
+    pub const fn new() -> Manager<'a> {
+        Manager {
+            powered_peripherals: List::new(),
+            //_chip: Cell::new(None),
         }
     }
 
-    /// Registers a module to be used - it works multiple
-    /// times for each module, and will only power on a region
-    /// if it isn't already powered.
-    pub fn register<T: PowerModule>(&self, module: &'static T) {
-        let existing_module =
-            self.dependencies
-                .iter()
-                .find(|dep| dep.module.id() == module.id());
+    /// Register a powered peripheral to hook up and be notified
+    /// when specific events occur (sleep, etc).
+    pub fn register(&self, peripheral: &'a PoweredPeripheral<'a>) {
+        self.powered_peripherals.push_head(peripheral);
+    }
 
-        match existing_module {
-            None => {
-                panic!("Tried to enable a power dependency which was not registered.\r");
-            },
+    /// Request access for a specific peripheral to be used
+    #[no_mangle]
+    #[inline(never)]
+    pub fn request(&self, identifier: u32) {
+        let powered_peripheral = self.powered_peripherals
+            .iter()
+            .find(|p| p.identifier() == identifier)
+            .expect("peripheral requested that has not been registered.");
 
-            Some(m) => {
-                // In case it is already registered, we check if its used or discarded
-                if m.used.get() {
-                    return;
-                } else {
-                    m.used.set(true);
-                }
-            }
+        if powered_peripheral.usage() == 0 {
+            powered_peripheral.power_on();
         }
 
-        for region in module.regions().iter() {
-            if !self.region_manager.is_enabled(*region) {
-                self.region_manager.enable(*region);
+        powered_peripheral.usage_map(|usage: u32| usage + 1);
+    }
+
+    /// Release a specific peripheral as no longer being used
+    pub fn release(&self, identifier: u32) {
+        let powered_peripheral = self.powered_peripherals
+            .iter()
+            .find(|p| p.identifier() == identifier)
+            .expect("peripheral requested that has not been registered.");
+
+        powered_peripheral.usage_map(|usage: u32| {
+            if usage > 0 {
+                usage - 1
+            } else {
+                0
             }
+        });
+
+        if powered_peripheral.usage() == 0 {
+            powered_peripheral.power_off();
         }
     }
 
-    /// Unregister a module which is in use - it works multiple times
-    /// for each module, depending on how many drivers are using the
-    /// module in a specific power region.
-    pub fn unregister<T: PowerModule>(&self, module: &'static T) {
-        let existing_module =
-            self.dependencies
-                .iter()
-                .find(|dep| dep.module.id() == module.id());
-
-        match existing_module {
-            None => (),
-            Some(m) => {
-                m.used.set(false);
-
-                for region in module.regions().iter() {
-                    let used_by_other =
-                        self.dependencies
-                            .iter()
-                            .find(|dep| {
-                                dep.module.regions()
-                                    .iter()
-                                    .any(| r | *r == *region)
-                            });
-
-                    // Skip this if it's being used by another module
-                    if used_by_other.is_some() {
-                        continue;
-                    }
-
-                    debug_verbose!("Disabling region {}\r", *region);
-                    self.region_manager.disable(*region);
-                }
-            }
-        }
+    /// Progress into the lowest sleep mode possible
+    #[allow(unused)]
+    fn sleep(&self) {
+        unimplemented!()
     }
-
-    pub fn sleep(&self) {}
 }
