@@ -15,9 +15,9 @@
 
 use uart;
 use gpio;
-use power_manager::{Manager, PoweredPeripheral};
+use power_manager::{PowerManager, PoweredPeripheral};
 
-pub static mut PM: Manager<'static> = Manager::new();
+pub static mut PM: PowerManager<'static> = PowerManager::new();
 
 #[repr(u32)]
 pub enum Peripherals {
