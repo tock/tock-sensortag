@@ -1,41 +1,21 @@
-use power_manager;
-use prcm;
-
-use gpio;
 use uart;
+use gpio;
+use power_manager::{Manager, PoweredPeripheral};
 
-/// The power region manager specific
-/// for the CC26X0 chip, used to enable & disable power
-/// regions on demand.
-pub struct PowerRegionManager(());
+pub static mut PM: Manager<'static> = Manager::new();
 
-impl power_manager::PowerRegionManager for PowerRegionManager {
-    fn enable(&self, region: u32) {
-        let domain = prcm::PowerDomain::from(region);
-        prcm::Power::enable_domain(domain);
-        while !self.is_enabled(region) {}
-    }
-
-    fn disable(&self, region: u32) {
-        let domain = prcm::PowerDomain::from(region);
-        prcm::Power::disable_domain(domain);
-        while self.is_enabled(region) {}
-    }
-
-    fn is_enabled(&self, region: u32) -> bool {
-        let domain = prcm::PowerDomain::from(region);
-        prcm::Power::is_enabled(domain)
-    }
-
-    fn sleep(&self, _mode: u32) {
-        // TODO(cpluss): implement sleep modes
-        unimplemented!()
-    }
+#[repr(u32)]
+pub enum Peripherals {
+    UART = 0,
+    GPIO = 1,
 }
 
-// Low Power Manager
-pub static LPM: power_manager::PowerManager<PowerRegionManager>
-= power_manager::PowerManager::new(PowerRegionManager(()), &[
-    &gpio::GPIO_POWER_DEPENDENCY,
-    &uart::UART_POWER_DEPENDENCY,
-]);
+static mut UART0_PERIPHERAL: PoweredPeripheral<'static> = unsafe {
+    PoweredPeripheral::new(&uart::UART0)
+};
+static mut GPIO_PERIPHERAL: PoweredPeripheral<'static> = PoweredPeripheral::new(&gpio::GPIO);
+
+pub unsafe fn init() {
+    PM.register(&GPIO_PERIPHERAL);
+    PM.register(&UART0_PERIPHERAL);
+}

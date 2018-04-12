@@ -6,8 +6,10 @@ use core::cell::Cell;
 use kernel;
 
 use prcm;
-use cc26xx::gpio;
+use gpio;
 use ioc;
+
+use power_manager::PoweredClient;
 use power;
 
 pub const UART_BASE: usize = 0x4000_1000;
@@ -55,7 +57,8 @@ register_bitfields![
         DIVISOR OFFSET(0) NUMBITS(6) []
     ],
     Flags [
-        TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
+        TX_FIFO_FULL OFFSET(5) NUMBITS(1) [],
+        UART_BUSY OFFSET(3) NUMBITS(1) []
     ],
     Interrupts [
         ALL_INTERRUPTS OFFSET(0) NUMBITS(12) []
@@ -67,6 +70,7 @@ pub struct UART {
     client: Cell<Option<&'static uart::Client>>,
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
+    params: Cell<Option<kernel::hil::uart::UARTParams>>,
 }
 
 pub static mut UART0: UART = UART::new();
@@ -78,6 +82,7 @@ impl UART {
             client: Cell::new(None),
             tx_pin: Cell::new(None),
             rx_pin: Cell::new(None),
+            params: Cell::new(None),
         }
     }
 
@@ -86,7 +91,11 @@ impl UART {
         self.rx_pin.set(Some(rx_pin));
     }
 
-    pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
+    pub fn set_params(&self, params: kernel::hil::uart::UARTParams) {
+        self.params.set(Some(params));
+    }
+
+    pub fn configure(&self/*, params: kernel::hil::uart::UARTParams*/) {
         let tx_pin = match self.tx_pin.get() {
             Some(pin) => pin,
             None => panic!("Tx pin not configured for UART"),
@@ -96,6 +105,8 @@ impl UART {
             Some(pin) => pin,
             None => panic!("Rx pin not configured for UART"),
         };
+
+        let params = self.params.get().expect("no params configured for UART");
 
         unsafe {
             /*
@@ -152,6 +163,11 @@ impl UART {
         regs.lcrh.modify(LineControl::FIFO_ENABLE::CLEAR);
     }
 
+    fn busy(&self) -> bool {
+        let regs = unsafe { &*self.regs };
+        regs.fr.is_set(Flags::UART_BUSY)
+    }
+
     pub fn disable(&self) {
         self.fifo_disable();
         let regs = unsafe { &*self.regs };
@@ -197,15 +213,20 @@ impl kernel::hil::uart::UART for UART {
     }
 
     fn init(&self, params: kernel::hil::uart::UARTParams) {
-        self.power_and_clock();
-        self.disable_interrupts();
-        self.configure(params);
+        self.set_params(params);
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
         if tx_len == 0 {
             return;
         }
+
+        // Request power
+        unsafe {
+            power::PM.request(gpio::GPIO.identifier());
+            power::PM.request(self.identifier());
+        }
+        self.configure();
 
         for i in 0..tx_len {
             self.send_byte(tx_data[i]);
@@ -214,42 +235,46 @@ impl kernel::hil::uart::UART for UART {
         self.client.get().map(move |client| {
             client.transmit_complete(tx_data, kernel::hil::uart::Error::CommandComplete);
         });
+
+        while self.busy() { }
+
+        // We're done with the power regions
+        unsafe {
+            power::PM.release(gpio::GPIO.identifier());
+            power::PM.release(self.identifier());
+        }
+
     }
 
     #[allow(unused)]
     fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
 }
 
-const UART_PERIPHERAL_ID: u32 = 0x01;
-use power_manager;
-
-pub struct UartPowerModule(());
-
-impl power_manager::PowerModule for UartPowerModule {
-    fn id(&self) -> u32 {
-        UART_PERIPHERAL_ID
+impl PoweredClient for UART {
+    fn identifier(&self) -> u32 {
+        power::Peripherals::UART as u32
     }
 
-    fn regions(&self) -> &[u32] {
-        &[
-            prcm::PowerDomain::Serial as u32,
-            prcm::PowerDomain::Peripherals as u32,
-        ]
+    fn power_on(&self) {
+        prcm::Power::enable_domain(prcm::PowerDomain::Serial);
+        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
+        prcm::Clock::enable_uart_run();
+    }
+
+    fn power_off(&self) {
+        prcm::Power::disable_domain(prcm::PowerDomain::Serial);
+        while prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
+    }
+
+    fn before_sleep(&self) {
+        unimplemented!()
+    }
+
+    fn after_wakeup(&self) {
+        unimplemented!()
     }
 
     fn lowest_sleep_mode(&self) -> u32 {
         unimplemented!()
     }
-
-    fn prepare_for_sleep(&self) {
-        unimplemented!()
-    }
-
-    fn wakeup(&self) {
-        unimplemented!()
-    }
 }
-
-pub const UART_POWER_MODULE: UartPowerModule = UartPowerModule(());
-pub static UART_POWER_DEPENDENCY: power_manager::PowerDependency
-= power_manager::PowerDependency::new(&UART_POWER_MODULE);

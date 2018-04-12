@@ -12,7 +12,7 @@ extern crate cc26xx;
 extern crate kernel;
 
 use cc26xx::{aon, trng};
-use cc26x0::{gpio, radio, rtc, uart};
+use cc26x0::{radio, rtc, uart, gpio, power};
 
 #[macro_use]
 pub mod io;
@@ -68,6 +68,9 @@ pub unsafe fn reset_handler() {
 
     // Setup AON event defaults
     aon::AON_EVENT.setup();
+
+    // Setup the power management
+    power::init();
 
     // Power on peripheral domain and gpio clocks
     gpio::power_on_gpio();

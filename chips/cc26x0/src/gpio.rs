@@ -10,8 +10,9 @@ use kernel::common::regs::{ReadWrite, WriteOnly};
 use kernel::hil;
 use prcm;
 use ioc;
+
+use power_manager::PoweredClient;
 use power;
-use power_manager;
 
 const NUM_PINS: usize = 32;
 const GPIO_BASE: *const GpioRegisters = 0x4002_2000 as *const GpioRegisters;
@@ -211,45 +212,41 @@ pub static mut PORT: Port = Port {
     ],
 };
 
-const GPIO_PERIPHERAL_ID: u32 = 0x00;
+pub unsafe fn power_on_gpio() {
+    power::PM.request(GPIO.identifier());
+}
 
-pub struct GpioPowerModule (());
+pub struct Gpio (());
+pub static GPIO: Gpio = Gpio(());
 
-impl power_manager::PowerModule for GpioPowerModule {
-    fn id(&self) -> u32 {
-        GPIO_PERIPHERAL_ID
+impl PoweredClient for Gpio {
+    fn identifier(&self) -> u32 {
+        power::Peripherals::GPIO as u32
     }
 
-    fn regions(&self) -> &[u32] {
-        &[prcm::PowerDomain::Peripherals as u32]
+    fn power_on(&self) {
+        // Power on peripherals (eg. GPIO)
+        prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
+        // Wait for it to turn on until we continue
+        while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
+
+        // Enable the GPIO clocks
+        prcm::Clock::enable_gpio();
+    }
+
+    fn power_off(&self) {
+        // We never power these off
+    }
+
+    fn before_sleep(&self) {
+        unimplemented!()
+    }
+
+    fn after_wakeup(&self) {
+        unimplemented!()
     }
 
     fn lowest_sleep_mode(&self) -> u32 {
         unimplemented!()
     }
-
-    fn prepare_for_sleep(&self) {
-        unimplemented!()
-    }
-
-    fn wakeup(&self) {
-        unimplemented!()
-    }
 }
-
-pub const GPIO_POWER_MODULE: GpioPowerModule = GpioPowerModule(());
-pub static GPIO_POWER_DEPENDENCY: power_manager::PowerDependency
-= power_manager::PowerDependency::new(&GPIO_POWER_MODULE);
-
-pub fn power_on_gpio() {
-    // Power on peripherals (eg. GPIO)
-    /*prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
-    // Wait for it to turn on until we continue
-    while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}*/
-
-    power::LPM.register(&GPIO_POWER_MODULE);
-
-    // Enable the GPIO clocks
-    prcm::Clock::enable_gpio();
-}
-
