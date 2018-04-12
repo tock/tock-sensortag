@@ -213,7 +213,7 @@ pub static mut PORT: Port = Port {
 };
 
 pub unsafe fn power_on_gpio() {
-    power::PM.request(GPIO.identifier());
+    power::request(power::Peripherals::GPIO);
 }
 
 pub struct Gpio (());

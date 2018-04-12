@@ -215,10 +215,9 @@ impl kernel::hil::uart::UART for UART {
         if tx_len == 0 { return; }
 
         // Request power
-        unsafe {
-            power::PM.request(gpio::GPIO.identifier());
-            power::PM.request(self.identifier());
-        }
+        power::request(power::Peripherals::GPIO);
+        power::request(power::Peripherals::UART);
+
         self.configure();
 
         for i in 0..tx_len {
@@ -229,14 +228,9 @@ impl kernel::hil::uart::UART for UART {
             client.transmit_complete(tx_data, kernel::hil::uart::Error::CommandComplete);
         });
 
-        while self.busy() { }
-
         // We're done with the power regions
-        unsafe {
-            power::PM.release(gpio::GPIO.identifier());
-            power::PM.release(self.identifier());
-        }
-
+        power::release(power::Peripherals::UART);
+        power::release(power::Peripherals::GPIO);
     }
 
     #[allow(unused)]
@@ -255,6 +249,9 @@ impl PoweredClient for UART {
     }
 
     fn power_off(&self) {
+        // Wait for all the work
+        while self.busy() { }
+
         prcm::Power::disable_domain(prcm::PowerDomain::Serial);
         while prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
     }

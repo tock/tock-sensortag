@@ -19,3 +19,15 @@ pub unsafe fn init() {
     PM.register(&GPIO_PERIPHERAL);
     PM.register(&UART0_PERIPHERAL);
 }
+
+pub fn request(peripheral: Peripherals) {
+    unsafe {
+        PM.request(peripheral as u32);
+    }
+}
+
+pub fn release(peripheral: Peripherals) {
+    unsafe {
+        PM.release(peripheral as u32);
+    }
+}
