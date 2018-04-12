@@ -1,3 +1,18 @@
+/// Power management
+///
+/// This is the power management module for the CC26X0. It wraps up
+/// a power manager and connects it to each peripheral on the chip.
+///
+/// To request power for a certain peripheral
+///     power::request(power::Peripherals::<peripheral>)
+///
+/// Then release access to it once you're done
+///     power::release(power::Peripherals::<peripheral>)
+///
+/// This works multiple times, and it will toggle
+/// the power as long as it is not used elsewhere at the
+/// same time.
+
 use uart;
 use gpio;
 use power_manager::{Manager, PoweredPeripheral};
