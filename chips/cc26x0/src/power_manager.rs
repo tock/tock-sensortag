@@ -1,3 +1,10 @@
+/// Power Manager
+///
+/// Generalised power management for peripherals. It handles toggling
+/// their power on request & release once they've been used.
+///
+// TODO(cpluss): complete documentation above
+
 use core::cell::Cell;
 use kernel::common::{List, ListLink, ListNode};
 
