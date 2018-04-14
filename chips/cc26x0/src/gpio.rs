@@ -11,7 +11,7 @@ use kernel::hil;
 use prcm;
 use ioc;
 
-use power_manager::PoweredClient;
+use power_manager::PowerClient;
 use power;
 
 const NUM_PINS: usize = 32;
@@ -219,7 +219,7 @@ pub unsafe fn power_on_gpio() {
 pub struct Gpio (());
 pub static GPIO: Gpio = Gpio(());
 
-impl PoweredClient for Gpio {
+impl PowerClient for Gpio {
     fn identifier(&self) -> u32 {
         power::Peripherals::GPIO as u32
     }
