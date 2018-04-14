@@ -7,10 +7,10 @@ use core::cell::Cell;
 use kernel::common::{List, ListLink, ListNode};
 
 /// A peripheral which knows how to power itself up or down.
-/// Must be used in conjunction with a PoweredClient.
+/// Must be used in conjunction with a PowerClient.
 ///
 /// NOTE: you need to register all Powered Peripherals during initialisation.
-pub trait PoweredClient {
+pub trait PowerClient {
     /// Identifier for this peripheral. Used to distinguish peripherals between each other.
     fn identifier(&self) -> u32;
 
@@ -31,7 +31,7 @@ pub trait PoweredClient {
 }
 
 pub struct PoweredPeripheral<'a> {
-    client: Cell<Option<&'a PoweredClient>>,
+    client: Cell<Option<&'a PowerClient>>,
     next: ListLink<'a, PoweredPeripheral<'a>>,
     usage: Cell<u32>,
 }
@@ -41,7 +41,7 @@ impl<'a> ListNode<'a, PoweredPeripheral<'a>> for PoweredPeripheral<'a> {
 }
 
 impl<'a> PoweredPeripheral<'a> {
-    pub const fn new(client: &'a PoweredClient) -> PoweredPeripheral<'a> {
+    pub const fn new(client: &'a PowerClient) -> PoweredPeripheral<'a> {
         PoweredPeripheral {
             client: Cell::new(Some(client)),
             next: ListLink::empty(),
@@ -49,7 +49,7 @@ impl<'a> PoweredPeripheral<'a> {
         }
     }
 
-    pub fn client(&self) -> &'a PoweredClient { self.client.get().expect("") }
+    pub fn client(&self) -> &'a PowerClient { self.client.get().expect("") }
 
     pub fn usage_count(&self) -> u32 { self.usage.get() }
 

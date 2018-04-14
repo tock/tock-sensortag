@@ -9,7 +9,7 @@ use prcm;
 use gpio;
 use ioc;
 
-use power_manager::PoweredClient;
+use power_manager::PowerClient;
 use power;
 
 pub const UART_BASE: usize = 0x4000_1000;
@@ -244,7 +244,7 @@ impl kernel::hil::uart::UART for UART {
     fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
 }
 
-impl PoweredClient for UART {
+impl PowerClient for UART {
     fn identifier(&self) -> u32 {
         power::Peripherals::UART as u32
     }
