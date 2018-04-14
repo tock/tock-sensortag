@@ -227,9 +227,6 @@ impl PoweredClient for Gpio {
     fn power_on(&self) {
         // Power on peripherals (eg. GPIO)
         prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
-        // Wait for it to turn on until we continue
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
-
         // Enable the GPIO clocks
         prcm::Clock::enable_gpio();
     }

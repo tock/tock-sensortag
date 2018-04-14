@@ -244,16 +244,13 @@ impl PoweredClient for UART {
 
     fn power_on(&self) {
         prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
         prcm::Clock::enable_uart_run();
     }
 
     fn power_off(&self) {
         // Wait for all the work
         while self.busy() { }
-
         prcm::Power::disable_domain(prcm::PowerDomain::Serial);
-        while prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
     }
 
     fn before_sleep(&self) {

@@ -152,13 +152,16 @@ impl Power {
         match domain {
             PowerDomain::Peripherals => {
                 regs.pd_ctl0.modify(PowerDomain0::PERIPH_ON::SET);
+                while !Power::is_enabled(PowerDomain::Peripherals) {};
             }
             PowerDomain::Serial => {
                 regs.pd_ctl0.modify(PowerDomain0::SERIAL_ON::SET);
+                while !Power::is_enabled(PowerDomain::Serial) {};
             },
             PowerDomain::RFC => {
                 regs.pd_ctl0.modify(PowerDomain0::RFC_ON::SET);
                 regs.pd_ctl1.modify(PowerDomain1::RFC_ON::SET);
+                while !Power::is_enabled(PowerDomain::RFC) {};
             },
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");
