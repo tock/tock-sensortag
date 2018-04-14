@@ -10,8 +10,7 @@
 ///     power::release(power::Peripherals::<peripheral>)
 ///
 /// This works multiple times, and it will toggle
-/// the power as long as it is not used elsewhere at the
-/// same time.
+/// the power as long as it is not used elsewhere at the same time.
 
 use uart;
 use gpio;
