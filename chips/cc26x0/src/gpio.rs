@@ -11,9 +11,6 @@ use kernel::hil;
 use prcm;
 use ioc;
 
-use power_manager::PowerClient;
-use power;
-
 const NUM_PINS: usize = 32;
 const GPIO_BASE: *const GpioRegisters = 0x4002_2000 as *const GpioRegisters;
 
@@ -33,6 +30,15 @@ pub struct GpioRegisters {
     pub doe: ReadWrite<u32>,
     _reserved6: [u8; 0xC],
     pub evflags: ReadWrite<u32>,
+}
+
+pub fn power_on_gpio() {
+    // Power on peripherals (eg. GPIO)
+    prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
+    // Wait for it to turn on until we continue
+    while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
+    // Enable the GPIO clocks
+    prcm::Clock::enable_gpio();
 }
 
 pub struct GPIOPin {
@@ -211,39 +217,3 @@ pub static mut PORT: Port = Port {
         GPIOPin::new(31),
     ],
 };
-
-pub unsafe fn power_on_gpio() {
-    power::request(power::Peripherals::GPIO);
-}
-
-pub struct Gpio (());
-pub static GPIO: Gpio = Gpio(());
-
-impl PowerClient for Gpio {
-    fn identifier(&self) -> u32 {
-        power::Peripherals::GPIO as u32
-    }
-
-    fn power_on(&self) {
-        // Power on peripherals (eg. GPIO)
-        prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
-        // Enable the GPIO clocks
-        prcm::Clock::enable_gpio();
-    }
-
-    fn power_off(&self) {
-        // We never power these off
-    }
-
-    fn before_sleep(&self) {
-        unimplemented!()
-    }
-
-    fn after_wakeup(&self) {
-        unimplemented!()
-    }
-
-    fn lowest_sleep_mode(&self) -> u32 {
-        unimplemented!()
-    }
-}

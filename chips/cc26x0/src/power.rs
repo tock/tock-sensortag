@@ -1,47 +1,35 @@
-/// Power management
-///
-/// This is the power management module for the CC26X0. It wraps up
-/// a power manager and connects it to each peripheral on the chip.
-///
-/// To request power for a certain peripheral
-///     power::request(power::Peripherals::<peripheral>)
-///
-/// Then release access to it once you're done
-///     power::release(power::Peripherals::<peripheral>)
-///
-/// This works multiple times, and it will toggle
-/// the power as long as it is not used elsewhere at the same time.
+use power_manager::{PowerManager, PowerResource, ResourceHandler};
+use prcm::{Power,PowerDomain};
 
-use uart;
-use gpio;
-use power_manager::{PowerManager, PoweredPeripheral};
+pub static mut PM: PowerManager<'static, RegionManager> = PowerManager::new(RegionManager);
 
-pub static mut PM: PowerManager<'static> = PowerManager::new();
+pub static mut PWR_REGIONS: [PowerResource; 2] = [
+    PowerResource::new(PowerDomain::Serial as u32),
+    PowerResource::new(PowerDomain::Peripherals as u32)
+];
 
-#[repr(u32)]
-pub enum Peripherals {
-    UART = 0,
-    GPIO = 1,
-}
+pub struct RegionManager;
 
-static mut UART0_PERIPHERAL: PoweredPeripheral<'static> = unsafe {
-    PoweredPeripheral::new(&uart::UART0)
-};
-static mut GPIO_PERIPHERAL: PoweredPeripheral<'static> = PoweredPeripheral::new(&gpio::GPIO);
+impl ResourceHandler for RegionManager {
+    fn power_on_resource(&self, resource_id: u32) {
+        let domain = PowerDomain::from(resource_id);
+        match domain {
+            PowerDomain::Serial => Power::enable_domain(PowerDomain::Serial),
+            _ => {}
+        }
+    }
 
-pub unsafe fn init() {
-    PM.register(&GPIO_PERIPHERAL);
-    PM.register(&UART0_PERIPHERAL);
-}
-
-pub fn request(peripheral: Peripherals) {
-    unsafe {
-        PM.request(peripheral as u32);
+    fn power_off_resource(&self, resource_id: u32) {
+        let domain = PowerDomain::from(resource_id);
+        match domain {
+            PowerDomain::Serial => Power::disable_domain(PowerDomain::Serial),
+            _ => {}
+        }
     }
 }
 
-pub fn release(peripheral: Peripherals) {
-    unsafe {
-        PM.release(peripheral as u32);
+pub unsafe fn init_power_management() {
+    for pwr_region in PWR_REGIONS.iter() {
+        PM.add_resource(&pwr_region);
     }
 }

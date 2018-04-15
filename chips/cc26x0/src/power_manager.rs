@@ -1,123 +1,92 @@
-/// Power Manager
-///
-/// Generalised power management for peripherals.
-// TODO(cpluss): complete documentation above
-
 use core::cell::Cell;
 use kernel::common::{List, ListLink, ListNode};
 
-/// A peripheral which knows how to power itself up or down.
-/// Must be used in conjunction with a PowerClient.
-///
-/// NOTE: you need to register all Powered Peripherals during initialisation.
-pub trait PowerClient {
-    /// Identifier for this peripheral. Used to distinguish peripherals between each other.
-    fn identifier(&self) -> u32;
-
-    /// Power on the peripheral
-    fn power_on(&self);
-
-    /// Power off the peripheral
-    fn power_off(&self);
-
-    /// This is invoked before the chip goes into sleep mode, if the peripheral is powered.
+/*
+pub trait PowerClient<'a> {
     fn before_sleep(&self);
 
-    /// This is invoked once the chip has woken up from any sleep mode.
     fn after_wakeup(&self);
 
-    /// This is the lowest sleep mode this module will still be able to function in.
     fn lowest_sleep_mode(&self) -> u32;
 }
+*/
 
-pub struct PoweredPeripheral<'a> {
-    client: Cell<Option<&'a PowerClient>>,
-    next: ListLink<'a, PoweredPeripheral<'a>>,
-    usage: Cell<u32>,
+pub trait ResourceHandler {
+    fn power_on_resource(&self, resource_id: u32);
+
+    fn power_off_resource(&self, resource_id: u32);
 }
 
-impl<'a> ListNode<'a, PoweredPeripheral<'a>> for PoweredPeripheral<'a> {
-    fn next(&self) -> &'a ListLink<PoweredPeripheral<'a>> { &self.next }
+pub struct PowerResource<'a> {
+    id: Cell<u32>,
+    next: ListLink<'a, PowerResource<'a>>,
+    ref_count: Cell<u32>,
 }
 
-impl<'a> PoweredPeripheral<'a> {
-    pub const fn new(client: &'a PowerClient) -> PoweredPeripheral<'a> {
-        PoweredPeripheral {
-            client: Cell::new(Some(client)),
+impl<'a> ListNode<'a, PowerResource<'a>> for PowerResource<'a> {
+    fn next(&self) -> &'a ListLink<PowerResource<'a>> { &self.next }
+}
+
+impl<'a> PowerResource<'a> {
+    pub const fn new(id: u32) -> PowerResource<'a> {
+        PowerResource {
+            id: Cell::new(id),
             next: ListLink::empty(),
-            usage: Cell::new(0),
+            ref_count: Cell::new(0),
         }
     }
 
-    pub fn client(&self) -> &'a PowerClient { self.client.get().expect("") }
+    pub fn inc_ref_count(&self) { self.ref_count.set(self.ref_count.get() + 1); }
 
-    pub fn usage_count(&self) -> u32 { self.usage.get() }
-
-    pub fn increment_usage(&self) { self.usage.set(self.usage.get() - 1); }
-
-    pub fn decrement_usage(&self) { self.usage.set(self.usage.get() + 1); }
+    pub fn dec_ref_count(&self) { self.ref_count.set(self.ref_count.get() - 1); }
 }
 
-/// Keeps track of what peripherals are being used and if they should be powered on.
-/// Also manages sleep modes.
-pub struct PowerManager<'a> {
-    /// A list of IDs for powered peripherals.
-    powered_peripherals: List<'a, PoweredPeripheral<'a>>,
+pub struct PowerManager<'a, T: ResourceHandler> {
+    resources: List<'a, PowerResource<'a>>,
+    resource_handler: T,
 }
 
-impl<'a> PowerManager<'a> {
-    pub const fn new() -> PowerManager<'a> {
+impl<'a, T: ResourceHandler> PowerManager<'a, T> {
+    pub const fn new(resource_handler: T) -> PowerManager<'a, T> {
         PowerManager {
-            powered_peripherals: List::new(),
+            resources: List::new(),
+            resource_handler,
         }
     }
 
-    /// Register a powered peripheral to be notified when going into sleep mode or waking up.
-    pub fn register(&self, peripheral: &'a PoweredPeripheral<'a>) {
-        self.powered_peripherals.push_head(peripheral);
+    pub fn add_resource(&self, resource: &'a PowerResource<'a>) {
+        self.resources.push_head(resource);
     }
 
-    /// Request access for a specific peripheral to be used.
-    pub fn request(&self, identifier: u32) {
-        let peripheral = self.powered_peripherals
+    pub fn request_resource(&self, resource_id: u32) {
+        let resource = self.resources
             .iter()
-            .find(|p| p.client().identifier() == identifier)
-            .expect("peripheral requested that has not been registered.");
+            .find(| r| { r.id.get() == resource_id })
+            .expect("Resource not found.");
 
-        if peripheral.usage_count() == 0 { peripheral.client().power_on(); }
+        if resource.ref_count.get() == 0 { self.resource_handler.power_on_resource(resource_id); }
 
-        peripheral.increment_usage();
+        resource.inc_ref_count();
     }
 
-    /// Release a specific peripheral as no longer being used.
-    pub fn release(&self, identifier: u32) {
-        let peripheral = self.powered_peripherals
+    pub fn release_resource(&self, resource_id: u32) {
+        let resource = self.resources
             .iter()
-            .find(|p| p.client().identifier() == identifier)
-            .expect("peripheral requested that has not been registered.");
+            .find(|r | { r.id.get() == resource_id })
+            .expect("Resource not found.");
 
-        if peripheral.usage_count() > 0 { peripheral.decrement_usage() }
+        if resource.ref_count.get() > 0 { resource.dec_ref_count() }
 
-        if peripheral.usage_count() == 0 {
-            peripheral.client().power_off();
-        }
+        if resource.ref_count.get() == 0 { self.resource_handler.power_off_resource(resource_id); }
     }
 
-    pub fn prepare_sleep(&self) {
-        for peripheral in self.powered_peripherals.iter() {
-            if peripheral.usage_count() > 0 {
-                peripheral.client().before_sleep();
-                peripheral.client().power_off();
-            }
-        }
+    /*
+    pub fn prepare_for_sleep(&self, clients: &[PowerClient]) {
+        clients.into_iter().map(|c| { c.before_sleep(); });
     }
 
-    pub fn after_wakeup(&self) {
-        for peripheral in self.powered_peripherals.iter() {
-            if peripheral.usage_count() > 0 {
-                peripheral.client().power_on();
-                peripheral.client().after_wakeup();
-            }
-        }
+    pub fn after_wakeup(&self, clients: &[PowerClient]) {
+        clients.into_iter().map(|c| { c.after_wakeup(); });
     }
+    */
 }
