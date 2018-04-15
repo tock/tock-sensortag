@@ -71,8 +71,8 @@ pub unsafe fn reset_handler() {
     // Setup AON event defaults
     aon::AON_EVENT.setup();
 
-    // Setup the power management
-    power::init();
+    // Setup power management and register all resources to be used
+    power::init_power_management();
 
     // Power on peripheral domain and gpio clocks
     gpio::power_on_gpio();

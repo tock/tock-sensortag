@@ -77,7 +77,5 @@ impl kernel::Chip for Cc26x0 {
         unsafe { nvic::has_pending() }
     }
 
-    fn prepare_for_sleep(&self) {
-        unimplemented!()
-    }
+    fn prepare_for_sleep(&self) { }
 }

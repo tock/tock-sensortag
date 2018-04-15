@@ -6,11 +6,9 @@ use core::cell::Cell;
 use kernel;
 
 use prcm;
-use gpio;
+use cc26xx::gpio;
 use ioc;
-
-use power_manager::PowerClient;
-use power;
+use power::PM;
 
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
@@ -70,7 +68,6 @@ pub struct UART {
     client: Cell<Option<&'static uart::Client>>,
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
-    params: Cell<Option<kernel::hil::uart::UARTParams>>,
 }
 
 pub static mut UART0: UART = UART::new();
@@ -82,7 +79,6 @@ impl UART {
             client: Cell::new(None),
             tx_pin: Cell::new(None),
             rx_pin: Cell::new(None),
-            params: Cell::new(None),
         }
     }
 
@@ -91,11 +87,7 @@ impl UART {
         self.rx_pin.set(Some(rx_pin));
     }
 
-    pub fn set_params(&self, params: kernel::hil::uart::UARTParams) {
-        self.params.set(Some(params));
-    }
-
-    pub fn configure(&self/*, params: kernel::hil::uart::UARTParams*/) {
+    pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
         let tx_pin = match self.tx_pin.get() {
             Some(pin) => pin,
             None => panic!("Tx pin not configured for UART")
@@ -105,8 +97,6 @@ impl UART {
             Some(pin) => pin,
             None => panic!("Rx pin not configured for UART")
         };
-
-        let params = self.params.get().expect("no params configured for UART");
 
         unsafe {
             /*
@@ -137,6 +127,11 @@ impl UART {
             + Control::RX_ENABLE::SET
             + Control::TX_ENABLE::SET
         );
+    }
+
+    fn power_and_clock(&self) {
+        unsafe { PM.request_resource(prcm::PowerDomain::Serial as u32); }
+        prcm::Clock::enable_uart_run();
     }
 
     fn set_baud_rate(&self, baud_rate: u32) {
@@ -208,17 +203,13 @@ impl kernel::hil::uart::UART for UART {
     }
 
     fn init(&self, params: kernel::hil::uart::UARTParams) {
-        self.set_params(params);
+        self.power_and_clock();
+        self.disable_interrupts();
+        self.configure(params);
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
         if tx_len == 0 { return; }
-
-        // Request power
-        power::request(power::Peripherals::GPIO);
-        power::request(power::Peripherals::UART);
-
-        self.configure();
 
         for i in 0..tx_len {
             self.send_byte(tx_data[i]);
@@ -227,41 +218,8 @@ impl kernel::hil::uart::UART for UART {
         self.client.get().map(move |client| {
             client.transmit_complete(tx_data, kernel::hil::uart::Error::CommandComplete);
         });
-
-        // We're done with the power regions
-        power::release(power::Peripherals::UART);
-        power::release(power::Peripherals::GPIO);
     }
 
     #[allow(unused)]
     fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
-}
-
-impl PowerClient for UART {
-    fn identifier(&self) -> u32 {
-        power::Peripherals::UART as u32
-    }
-
-    fn power_on(&self) {
-        prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        prcm::Clock::enable_uart_run();
-    }
-
-    fn power_off(&self) {
-        // Wait for all the work
-        while self.busy() { }
-        prcm::Power::disable_domain(prcm::PowerDomain::Serial);
-    }
-
-    fn before_sleep(&self) {
-        unimplemented!()
-    }
-
-    fn after_wakeup(&self) {
-        unimplemented!()
-    }
-
-    fn lowest_sleep_mode(&self) -> u32 {
-        unimplemented!()
-    }
 }
