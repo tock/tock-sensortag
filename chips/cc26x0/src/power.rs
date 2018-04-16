@@ -24,6 +24,6 @@ impl ResourceManager for RegionManager {
 
 pub unsafe fn init() {
     for pwr_region in POWER_REGIONS.iter() {
-        PM.add_resource(&pwr_region);
+        PM.register_resource(&pwr_region);
     }
 }
