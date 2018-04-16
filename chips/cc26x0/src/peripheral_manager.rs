@@ -8,28 +8,32 @@ pub trait PowerClient {
 }
 
 pub struct Peripheral<'a> {
-    client: Cell<&'a PowerClient>,
+    client: Cell<Option<&'a PowerClient>>,
     next: ListLink <'a, Peripheral<'a>>
 }
 
 impl<'a> Peripheral<'a> {
-    pub fn new(client: &'a PowerClient) -> Peripheral {
+    pub const fn new(client: &'a PowerClient) -> Peripheral {
         Peripheral {
-            client: Cell::new(client),
+            client: Cell::new(Some(client)),
             next: ListLink::empty(),
         }
     }
 
     pub fn lowest_sleep_mode(&self) -> u32 {
-        self.client.get().lowest_sleep_mode()
+        self.client.get()
+            .map(|c| c.lowest_sleep_mode())
+            .expect("No power client for a peripheral is set.")
     }
 
     pub fn before_sleep(&self, sleep_mode: u32) {
-        self.client.get().before_sleep(sleep_mode);
+        self.client.get()
+            .map(|c| c.before_sleep(sleep_mode));
     }
 
     pub fn after_wakeup(&self, sleep_mode: u32) {
-        self.client.get().after_wakeup(sleep_mode);
+        self.client.get()
+            .map(|c| c.after_wakeup(sleep_mode));
     }
 }
 
@@ -53,11 +57,15 @@ impl<'a> PeripheralManager<'a> {
     }
 
     pub fn before_sleep(&self, sleep_mode: u32) {
-        self.peripherals.iter().map(|p| p.before_sleep(sleep_mode));
+        for peripheral in self.peripherals.iter() {
+            peripheral.before_sleep(sleep_mode);
+        }
     }
 
     pub fn after_wakeup(&self, sleep_mode: u32) {
-        self.peripherals.iter().map(|p| p.after_wakeup(sleep_mode));
+        for peripheral in self.peripherals.iter() {
+            peripheral.after_wakeup(sleep_mode);
+        }
     }
 
     pub fn lowest_sleep_mode(&self) -> u32 {
