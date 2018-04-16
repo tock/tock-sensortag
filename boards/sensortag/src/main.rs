@@ -12,8 +12,8 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::{aon,trng};
-use cc26x0::{radio,rtc,uart,gpio,power};
+use cc26xx::{trng};
+use cc26x0::{aon,radio,rtc,uart,gpio,power};
 
 #[macro_use]
 pub mod io;
