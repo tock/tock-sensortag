@@ -1,13 +1,41 @@
 use core::cell::Cell;
 use kernel::common::{List, ListLink, ListNode};
 
-/*
-pub trait ResourceClient<'a> {
-    fn before_sleep(&self);
-    fn after_wakeup(&self);
+pub trait PowerClient {
+    fn before_sleep(&self, sleep_mode: u32);
+    fn after_wakeup(&self, sleep_mode: u32);
     fn lowest_sleep_mode(&self) -> u32;
 }
-*/
+
+pub struct Peripheral<'a> {
+    client: Cell<Option<&'a PowerClient>>,
+    next: ListLink <'a, Peripheral<'a>>
+}
+
+impl<'a> Peripheral<'a> {
+    pub fn new(client: &'a PowerClient) -> Peripheral {
+        Peripheral {
+            client: Cell::new(Some(client)),
+            next: ListLink::empty(),
+        }
+    }
+
+    pub fn lowest_sleep_mode(&self) -> u32 {
+        self.client.get().map(|c| c.lowest_sleep_mode()).expect("No client assigned.")
+    }
+
+    pub fn before_sleep(&self, sleep_mode: u32) {
+        self.client.get().map(|c| c.before_sleep(sleep_mode));
+    }
+
+    pub fn after_wakeup(&self, sleep_mode: u32) {
+        self.client.get().map(|c| c.after_wakeup(sleep_mode));
+    }
+}
+
+impl<'a> ListNode<'a, Peripheral<'a>> for Peripheral<'a> {
+    fn next(&self) -> &'a ListLink<Peripheral<'a>> { &self.next }
+}
 
 pub trait ResourceManager {
     fn enable_resource(&self, resource_id: u32);
@@ -45,6 +73,7 @@ impl<'a> Resource<'a> {
 
 pub struct PowerManager<'a, T: ResourceManager> {
     resources: List<'a, Resource<'a>>,
+    peripherals: List<'a, Peripheral<'a>>,
     resource_manager: T,
 }
 
@@ -52,6 +81,7 @@ impl<'a, T: ResourceManager> PowerManager<'a, T> {
     pub const fn new(resource_manager: T) -> PowerManager<'a, T> {
         PowerManager {
             resources: List::new(),
+            peripherals: List::new(),
             resource_manager,
         }
     }
@@ -88,13 +118,21 @@ impl<'a, T: ResourceManager> PowerManager<'a, T> {
         }
     }
 
-    /*
-    pub fn prepare_for_sleep(&self, clients: &[PowerClient]) {
-        clients.into_iter().map(|c| { c.before_sleep(); });
+    pub fn register_peripheral(&self, peripheral: &'a Peripheral<'a>) {
+        self.peripherals.push_head(peripheral);
     }
 
-    pub fn after_wakeup(&self, clients: &[PowerClient]) {
-        clients.into_iter().map(|c| { c.after_wakeup(); });
+    pub fn before_sleep(&self, sleep_mode: u32) {
+        self.peripherals.iter().map(|p| p.before_sleep(sleep_mode));
     }
-    */
+
+    pub fn after_wakeup(&self, sleep_mode: u32) {
+        self.peripherals.iter().map(|p| p.after_wakeup(sleep_mode));
+    }
+
+    pub fn lowest_sleep_mode(&self) -> u32 {
+        self.peripherals.iter().fold(0, |prev, peripheral| {
+            prev.max(peripheral.lowest_sleep_mode())
+        })
+    }
 }
