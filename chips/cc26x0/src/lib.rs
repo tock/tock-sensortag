@@ -11,6 +11,7 @@ extern crate kernel;
 #[macro_use]
 extern crate bitfield;
 
+pub mod aon;
 pub mod chip;
 pub mod crt1;
 pub mod uart;
@@ -27,6 +28,7 @@ pub mod rtc;
 pub mod gpio;
 
 pub mod power;
+pub mod peripherals;
 pub mod power_manager;
 pub mod peripheral_manager;
 
