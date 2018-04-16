@@ -8,28 +8,28 @@ pub trait PowerClient {
 }
 
 pub struct Peripheral<'a> {
-    client: Cell<Option<&'a PowerClient>>,
+    client: Cell<&'a PowerClient>,
     next: ListLink <'a, Peripheral<'a>>
 }
 
 impl<'a> Peripheral<'a> {
     pub fn new(client: &'a PowerClient) -> Peripheral {
         Peripheral {
-            client: Cell::new(Some(client)),
+            client: Cell::new(client),
             next: ListLink::empty(),
         }
     }
 
     pub fn lowest_sleep_mode(&self) -> u32 {
-        self.client.get().map(|c| c.lowest_sleep_mode()).expect("No client assigned.")
+        self.client.get().lowest_sleep_mode()
     }
 
     pub fn before_sleep(&self, sleep_mode: u32) {
-        self.client.get().map(|c| c.before_sleep(sleep_mode));
+        self.client.get().before_sleep(sleep_mode);
     }
 
     pub fn after_wakeup(&self, sleep_mode: u32) {
-        self.client.get().map(|c| c.after_wakeup(sleep_mode));
+        self.client.get().after_wakeup(sleep_mode);
     }
 }
 
