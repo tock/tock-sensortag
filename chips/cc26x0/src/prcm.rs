@@ -94,7 +94,8 @@ register_bitfields![
         RFC_ON      OFFSET(0) NUMBITS(1) []
     ],
     PowerDomain1 [
-        RFC_ON      OFFSET(2) NUMBITS(1) []
+        RFC_ON      OFFSET(2) NUMBITS(1) [],
+        CPU_ON      OFFSET(1) NUMBITS(1) []
     ],
     PowerDomainSingle [
         ON  OFFSET(0) NUMBITS(1) []
@@ -105,7 +106,8 @@ register_bitfields![
         RFC_ON      OFFSET(0) NUMBITS(1) []
     ],
     PowerDomainStatus1 [
-        RFC_ON      OFFSET(2) NUMBITS(1) []
+        RFC_ON      OFFSET(2) NUMBITS(1) [],
+        CPU_ON      OFFSET(1) NUMBITS(1) []
     ]
 ];
 
@@ -129,6 +131,7 @@ pub enum PowerDomain {
     Serial = 1,
     Peripherals = 2,
     VIMS = 3,
+    CPU = 4,
 }
 
 impl From<u32> for PowerDomain {
@@ -138,6 +141,7 @@ impl From<u32> for PowerDomain {
             1 => PowerDomain::Serial,
             2 => PowerDomain::Peripherals,
             3 => PowerDomain::VIMS,
+            4 => PowerDomain::CPU,
             _ => unimplemented!()
         }
     }
@@ -163,6 +167,9 @@ impl Power {
                 regs.pd_ctl1.modify(PowerDomain1::RFC_ON::SET);
                 while !Power::is_enabled(PowerDomain::RFC) {};
             },
+            PowerDomain::CPU => {
+                regs.pd_ctl1.modify(PowerDomain1::CPU_ON::SET);
+            }
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");
             }
@@ -183,6 +190,9 @@ impl Power {
                 regs.pd_ctl0.modify(PowerDomain0::RFC_ON::CLEAR);
                 regs.pd_ctl1.modify(PowerDomain1::RFC_ON::CLEAR);
             },
+            PowerDomain::CPU => {
+                regs.pd_ctl1.modify(PowerDomain1::CPU_ON::CLEAR);
+            }
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");
             }
@@ -198,6 +208,7 @@ impl Power {
                 regs.pd_stat1.is_set(PowerDomainStatus1::RFC_ON)
                 && regs.pd_stat0.is_set(PowerDomainStatus0::RFC_ON)
             },
+            PowerDomain::CPU => regs.pd_stat1.is_set(PowerDomainStatus1::CPU_ON),
             _ => false,
         }
     }
