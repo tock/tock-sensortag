@@ -14,15 +14,36 @@
 use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
 
 #[repr(C)]
+struct AonWucRegisters {
+    mcu_clk: ReadWrite<u32>,
+
+    // Fill out as needed
+}
+
+register_bitfields![
+    u32,
+    MCUClockControl [
+        PWR_DWN_SRC OFFSET(0) NUMBITS(2) [
+            NO_CLOCK = 0b00,
+            SCLK_LF = 0b01
+        ]
+    ]
+];
+
+#[repr(C)]
 struct PrcmRegisters {
-    _reserved0: [ReadOnly<u8>; 0x28],
+    _reserved0: [ReadOnly<u8>; 0x0C],
+
+    pub vd_ctl: ReadWrite<u32, VDControl::Register>,
+
+    _reserved1: [ReadOnly<u8>; 0x18],
 
     // Write 1 in order to load settings
     pub clk_load_ctl: ReadWrite<u32, ClockLoad::Register>,
 
     pub rfc_clk_gate: ReadWrite<u32, ClockGate::Register>,
 
-    _reserved1: [ReadOnly<u8>; 0xC],
+    _reserved2: [ReadOnly<u8>; 0xC],
 
     // TRNG, Crypto, and UDMA
     pub sec_dma_clk_run: ReadWrite<u32, SECDMAClockGate::Register>,
@@ -45,7 +66,7 @@ struct PrcmRegisters {
     pub uart_clk_gate_sleep: ReadWrite<u32, ClockGate::Register>,
     pub uart_clk_gate_deep_sleep: ReadWrite<u32, ClockGate::Register>,
 
-    _reserved4: [ReadOnly<u8>; 0xB4],
+    _reserved3: [ReadOnly<u8>; 0xB4],
 
     // Power domain control 0
     pub pd_ctl0: ReadWrite<u32, PowerDomain0::Register>,
@@ -76,6 +97,18 @@ struct PrcmRegisters {
 
 register_bitfields![
     u32,
+    VDControl [
+        // Request a MCU power down, will only be enabled during
+        // following conditions:
+        //      * PDCTL1.CPU_ON = 0
+        //      * PDCTL1.VIMS_MODE = 0
+        //      * SECDMACLKGDS.DMA_CLK_EN = 0
+        //      * SECDMACLKGDS.CRYPTO_CLK_EN = 0
+        //      * RFC does not request the bus
+        //      * System CPU in deepsleep
+        MCU_VD_POWERDOWN  OFFSET(2) NUMBITS(1) [],
+        ULDO              OFFSET(0) NUMBITS(1) []
+    ],
     ClockLoad [
         LOAD_DONE   OFFSET(1) NUMBITS(1) [],
         LOAD        OFFSET(0) NUMBITS(1) []
@@ -112,6 +145,7 @@ register_bitfields![
 ];
 
 const PRCM_BASE: *mut PrcmRegisters = 0x4008_2000 as *mut PrcmRegisters;
+const AON_WUC_BASE: *mut AonWucRegisters = 0x4009_1000 as *mut AonWucRegisters;
 
 /*
     In order to save changes to the PRCM, we need to
@@ -122,6 +156,20 @@ fn prcm_commit() {
     regs.clk_load_ctl.write(ClockLoad::LOAD::SET);
     // Wait for the settings to take effect
     while !regs.clk_load_ctl.is_set(ClockLoad::LOAD_DONE) {}
+}
+
+/* Trigger a MCU power down request */
+pub fn mcu_power_down() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+
+    // TODO(cpluss): do not override these, detect if enabled instead
+    regs.sec_dma_clk_deep_sleep.modify(
+        SECDMAClockGate::DMA_CLK_EN::CLEAR
+            + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
+    );
+    prcm_commit();
+
+    regs.vd_ctl.modify(VDControl::MCU_VD_POWERDOWN::SET);
 }
 
 pub enum PowerDomain {
@@ -169,6 +217,7 @@ impl Power {
             }
             PowerDomain::CPU => {
                 regs.pd_ctl1.modify(PowerDomain1::CPU_ON::SET);
+                while !Power::is_enabled(PowerDomain::CPU) {}
             }
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");
@@ -235,6 +284,15 @@ impl Clock {
         prcm_commit();
     }
 
+    pub fn disable_uart_run() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.uart_clk_gate_run.write(ClockGate::CLK_EN::CLEAR);
+        regs.uart_clk_gate_sleep.write(ClockGate::CLK_EN::CLEAR);
+        regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::CLEAR);
+
+        prcm_commit();
+    }
+
     pub fn enable_trng() {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.sec_dma_clk_run
@@ -275,6 +333,11 @@ impl Clock {
     pub fn i2c_run_clk_enabled() -> bool {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.i2c_clk_gate_run.is_set(ClockGate::CLK_EN)
+    }
+
+    pub fn set_power_down_source(source: u32) {
+        let regs: &AonWucRegisters = unsafe { &*AON_WUC_BASE };
+        regs.mcu_clk.set(source & 0x01);
     }
 }
 
