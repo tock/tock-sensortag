@@ -104,7 +104,7 @@ impl Aux {
         }
     }
 
-    fn power_up(&self) {
+    pub fn power_up(&self) {
         if self.power_status() == WakeupMode::WakeUp {
             return
         }
@@ -115,8 +115,11 @@ impl Aux {
         while self.power_status() != WakeupMode::WakeUp { }
     }
 
-    #[allow(unused)]
-    fn power_down(&self) {
+    pub fn power_down(&self) {
+        if self.power_status() == WakeupMode::AllowSleep {
+            return
+        }
+
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
 
