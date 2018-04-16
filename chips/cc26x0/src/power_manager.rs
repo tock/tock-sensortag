@@ -56,7 +56,7 @@ impl<'a, T: ResourceManager> PowerManager<'a, T> {
         }
     }
 
-    pub fn add_resource(&self, resource: &'a Resource<'a>) {
+    pub fn register_resource(&self, resource: &'a Resource<'a>) {
         self.resources.push_head(resource);
     }
 
