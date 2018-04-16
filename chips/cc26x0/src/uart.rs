@@ -9,6 +9,9 @@ use prcm;
 use cc26xx::gpio;
 use ioc;
 use power::PM;
+use chip;
+
+use peripheral_manager;
 
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
@@ -222,4 +225,20 @@ impl kernel::hil::uart::UART for UART {
 
     #[allow(unused)]
     fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
+}
+
+impl peripheral_manager::PowerClient for UART {
+    fn before_sleep(&self, _sleep_mode: u32) {
+        unsafe { PM.release_resource(prcm::PowerDomain::Serial as u32); }
+        prcm::Clock::disable_uart_run();
+    }
+
+    fn after_wakeup(&self, _sleep_mode: u32) {
+        unsafe { PM.request_resource(prcm::PowerDomain::Serial as u32); }
+        prcm::Clock::enable_uart_run();
+    }
+
+    fn lowest_sleep_mode(&self) -> u32 {
+        chip::SleepMode::DeepSleep as u32
+    }
 }
