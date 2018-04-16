@@ -1,35 +1,29 @@
-use power_manager::{PowerManager, PowerResource, ResourceHandler};
+use power_manager::{PowerManager, Resource, ResourceManager};
 use prcm::{Power,PowerDomain};
 
-pub static mut PM: PowerManager<'static, RegionManager> = PowerManager::new(RegionManager);
+pub static mut PM: PowerManager<RegionManager> = PowerManager::new(RegionManager);
 
-pub static mut PWR_REGIONS: [PowerResource; 2] = [
-    PowerResource::new(PowerDomain::Serial as u32),
-    PowerResource::new(PowerDomain::Peripherals as u32)
+pub static mut POWER_REGIONS: [Resource; 2] = [
+    Resource::new(PowerDomain::Serial as u32),
+    Resource::new(PowerDomain::Peripherals as u32)
 ];
 
 pub struct RegionManager;
 
-impl ResourceHandler for RegionManager {
-    fn power_on_resource(&self, resource_id: u32) {
+impl ResourceManager for RegionManager {
+    fn enable_resource(&self, resource_id: u32) {
         let domain = PowerDomain::from(resource_id);
-        match domain {
-            PowerDomain::Serial => Power::enable_domain(PowerDomain::Serial),
-            _ => {}
-        }
+        Power::enable_domain(domain);
     }
 
-    fn power_off_resource(&self, resource_id: u32) {
+    fn disable_resource(&self, resource_id: u32) {
         let domain = PowerDomain::from(resource_id);
-        match domain {
-            PowerDomain::Serial => Power::disable_domain(PowerDomain::Serial),
-            _ => {}
-        }
+        Power::disable_domain(domain);
     }
 }
 
-pub unsafe fn init_power_management() {
-    for pwr_region in PWR_REGIONS.iter() {
+pub unsafe fn init() {
+    for pwr_region in POWER_REGIONS.iter() {
         PM.add_resource(&pwr_region);
     }
 }
