@@ -48,6 +48,8 @@ mod ddi;
 #[allow(unused_variables, unused_mut)]
 mod adi;
 
+pub mod recharge;
+
 pub fn perform() {
     unsafe { setup_trim_device() }
 }
