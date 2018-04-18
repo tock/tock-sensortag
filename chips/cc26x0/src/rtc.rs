@@ -26,7 +26,7 @@ pub struct RtcRegisters {
 
     // A read request to the sync register will not return
     // until all outstanding writes have properly propagated to the RTC domain
-    sync: ReadOnly<u32>,
+    sync: ReadWrite<u32>,
 }
 
 register_bitfields![
@@ -76,6 +76,7 @@ impl Rtc {
     pub fn start(&self) {
         let regs: &RtcRegisters = unsafe { &*self.regs };
         regs.ctl.write(Control::ENABLE::SET);
+        regs.ctl.modify(Control::COMB_EV_MASK.val(0b10));
 
         regs.sync.get();
     }
@@ -87,7 +88,13 @@ impl Rtc {
         regs.sync.get();
     }
 
-    fn read_counter(&self) -> u32 {
+    pub fn sync(&self) {
+        let regs: &RtcRegisters = unsafe { &*self.regs };
+        regs.sync.set(1);
+        regs.sync.get();
+    }
+
+    pub fn read_counter(&self) -> u32 {
         let regs: &RtcRegisters = unsafe { &*self.regs };
 
         /*

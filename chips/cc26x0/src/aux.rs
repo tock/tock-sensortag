@@ -4,21 +4,6 @@
 
 use kernel::common::VolatileCell;
 
-struct AonWucRegisters {
-    _mcu_clk: VolatileCell<u32>,
-    aux_clk: VolatileCell<u32>,
-    _mcu_cfg: VolatileCell<u32>,
-    aux_cfg: VolatileCell<u32>,
-    aux_ctl: VolatileCell<u32>,
-    pwr_stat: VolatileCell<u32>,
-    _shutdown: VolatileCell<u32>,
-
-    _reserved0: VolatileCell<u32>,
-
-    _ctl0: VolatileCell<u32>,
-    _ctl1: VolatileCell<u32>,
-}
-
 struct AuxWucRegisters {
     mod_clk_en0: VolatileCell<u32>,
     pwr_off_req: VolatileCell<u32>,
@@ -137,7 +122,7 @@ impl Aux {
         while self.power_status() != WakeupMode::AllowSleep {}
     }
 
-    fn wakeup_event(&self, mode: WakeupMode) {
+    pub fn wakeup_event(&self, mode: WakeupMode) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
         match mode {
             WakeupMode::AllowSleep => aon_regs.aux_ctl.set(0),
@@ -145,7 +130,7 @@ impl Aux {
         }
     }
 
-    fn power_status(&self) -> WakeupMode {
+    pub fn power_status(&self) -> WakeupMode {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
 
         if (aon_regs.pwr_stat.get() & 0x02) != 0 {
@@ -153,5 +138,26 @@ impl Aux {
         } else {
             WakeupMode::AllowSleep
         }
+    }
+
+    pub fn set_ram_retention(&self, ret: u32) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
+        aon_regs.mcu_cfg.set(aon_regs.mcu_cfg.get() | (ret & 0xF));
+    }
+
+    pub fn set_jtag_enabled(&self, enabled: bool) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
+        let jtag_cfg = if enabled { 0x100 } else { 0x00 };
+        aon_regs.jtag_cfg.set(jtag_cfg);
+    }
+
+    pub fn set_mcu_power_down_source(&self, source: u32) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
+        aon_regs.mcu_clk.set(aon_regs.mcu_clk.get() | (source & 0x01));
+    }
+
+    pub fn pwr_dwn_dis(&self) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
+        aon_regs.ctl0.set(aon_regs.ctl0.get() | 0x100);
     }
 }

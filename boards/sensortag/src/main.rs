@@ -12,7 +12,7 @@ extern crate cc26xx;
 extern crate kernel;
 
 use cc26xx::{trng};
-use cc26x0::{aon, radio, rtc, uart, gpio, power};
+use cc26x0::{aon,radio,rtc,uart,gpio,power,peripherals};
 
 #[macro_use]
 pub mod io;
@@ -71,6 +71,7 @@ pub unsafe fn reset_handler() {
 
     // Setup power management and register all resources to be used
     power::init();
+    peripherals::init();
 
     // Power on peripheral domain and gpio clocks
     gpio::power_on_gpio();
@@ -188,7 +189,7 @@ pub unsafe fn reset_handler() {
         capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
     );
 
-    trng::TRNG.enable();
+    //trng::TRNG.enable();
     let rng = static_init!(
         capsules::rng::SimpleRng<'static, trng::Trng>,
         capsules::rng::SimpleRng::new(&trng::TRNG, kernel::Grant::create())
