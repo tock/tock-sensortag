@@ -9,6 +9,13 @@ use kernel::common::VolatileCell;
 use kernel::common::regs::{ReadOnly,ReadWrite};
 
 #[repr(C)]
+pub struct AonIocRegisters {
+    _reserved0: [u32; 3],
+    ioc_latch: ReadWrite<u32, IocLatch::Register>,
+}
+
+
+#[repr(C)]
 pub struct AonEventRegisters {
     mcu_wu_sel: VolatileCell<u32>,       // MCU Wake-up selector
     aux_wu_sel: VolatileCell<u32>,       // AUX Wake-up selector
@@ -93,6 +100,9 @@ register_bitfields![
     ],
     JtagCfg [
         JTAG_PD_FORCE_ON    OFFSET(8) NUMBITS(1) []
+    ],
+  IocLatch [
+        EN  OFFSET(0) NUMBITS(1) []
     ]
 ];
 
@@ -100,6 +110,7 @@ register_bitfields![
 pub struct AonEvent {
     event_regs: *const AonEventRegisters,
     aon_wuc_regs: *const AonWucRegisters,
+    aon_ioc_regs: *const AonIocRegisters,
 }
 
 pub const AON: AonEvent = AonEvent::new();
@@ -109,6 +120,7 @@ impl AonEvent {
         AonEvent {
             event_regs: 0x4009_3000 as *const AonEventRegisters,
             aon_wuc_regs: 0x4009_1000 as *const AonWucRegisters,
+            aon_ioc_regs:  0x4009_4000 as *const AonIocRegisters,
         }
     }
 
@@ -131,6 +143,16 @@ impl AonEvent {
         //      NOTE: the aon programmable interrupt will still be fired
         //            once a debugger is attached through JTAG.
         regs.event_to_mcu_sel.set(0x003F3F3F);
+    }
+
+    pub fn lock_io_pins(&self, lock: bool) {
+        let regs: &AonIocRegisters = unsafe { &*self.aon_ioc_regs };
+        if lock {
+            regs.ioc_latch.write(IocLatch::EN::CLEAR);
+        }
+        else {
+            regs.ioc_latch.write(IocLatch::EN::SET);
+        }
     }
 
     pub fn aux_set_ram_retention(&self, enabled: bool) {
