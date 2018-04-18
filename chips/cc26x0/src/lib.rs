@@ -27,8 +27,6 @@ pub mod prcm;
 pub mod rtc;
 pub mod gpio;
 
-pub mod vims;
-
 pub mod power;
 pub mod peripherals;
 pub mod power_manager;
