@@ -149,10 +149,9 @@ register_bitfields![
 const PRCM_BASE: *mut PrcmRegisters = 0x4008_2000 as *mut PrcmRegisters;
 const AON_WUC_BASE: *mut AonWucRegisters = 0x4009_1000 as *mut AonWucRegisters;
 
-/*
-    In order to save changes to the PRCM, we need to
-    trigger
-*/
+
+/// In order to save changes to the PRCM, we need to trigger
+/// a clock to load the changes into the PRCM module.
 fn prcm_commit() {
     let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
     regs.clk_load_ctl.write(ClockLoad::LOAD::SET);
@@ -160,22 +159,9 @@ fn prcm_commit() {
     while !regs.clk_load_ctl.is_set(ClockLoad::LOAD_DONE) {}
 }
 
-/* Trigger a MCU power down request */
-pub fn mcu_power_down() {
-    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
-
-    // TODO(cpluss): do not override these, detect if enabled instead
-    regs.sec_dma_clk_deep_sleep.modify(
-        SECDMAClockGate::DMA_CLK_EN::CLEAR
-            + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
-    );
-
-    prcm_commit();
-
-    //regs.vd_ctl.modify(/*VDControl::MCU_VD_POWERDOWN::SET +*/ VDControl::ULDO::SET);
-}
-
-pub fn disable_dma_and_crypto() {
+/// This force disables DMA & Crypto clocks, since
+/// they can not be turned on if we want to transition into deep sleep.
+pub fn force_disable_dma_and_crypto() {
     let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
 
     // TODO(cpluss): do not override these, detect if enabled instead
@@ -185,11 +171,15 @@ pub fn disable_dma_and_crypto() {
     );
 }
 
+/// The ULDO power source is a temporary power source
+/// which could be enable to drive Peripherals in deep sleep.
 pub fn acquire_uldo() {
     let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
-    regs.vd_ctl.modify(/*VDControl::MCU_VD_POWERDOWN::SET +*/ VDControl::ULDO::SET);
+    regs.vd_ctl.modify(VDControl::ULDO::SET);
 }
 
+/// It is no use to enable the ULDO power source constantly,
+/// and it would need to be released once we go out of deep sleep
 pub fn release_uldo() {
     let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
     regs.vd_ctl.modify(VDControl::ULDO::CLEAR);

@@ -142,6 +142,9 @@ impl kernel::Chip for Cc26x0 {
                     // Set the ram retention to retain SRAM
                     aon::AON.mcu_set_ram_retention(true);
 
+                    // Force disable dma & crypto
+                    prcm::force_disable_dma_and_crypto();
+
                     // Disable all domains except Peripherals & Serial
                     prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
                     prcm::Power::disable_domain(prcm::PowerDomain::RFC);
