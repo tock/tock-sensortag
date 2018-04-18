@@ -20,20 +20,20 @@ pub struct AonEventRegisters {
 struct AonWucRegisters {
     mcu_clk: ReadWrite<u32, McuClk::Register>,
     aux_clk: ReadWrite<u32, AuxClk::Register>,
-    mcu_cfg: VolatileCell<u32>,
-    aux_cfg: VolatileCell<u32>,
-    aux_ctl: VolatileCell<u32>,
-    pwr_stat: VolatileCell<u32>,
-    _shutdown: VolatileCell<u32>,
+    mcu_cfg: ReadWrite<u32, McuCfg::Register>,
+    aux_cfg: ReadWrite<u32, AuxCfg::Register>,
+    aux_ctl: ReadWrite<u32, AuxCtl::Register>,
+    pwr_stat: ReadOnly<u32, PwrStat::Register>,
+    _shutdown: ReadOnly<u32>,
 
-    _reserved0: VolatileCell<u32>,
+    _reserved0: ReadOnly<u32>,
 
-    ctl0: VolatileCell<u32>,
-    _ctl1: VolatileCell<u32>,
+    ctl0: ReadWrite<u32, Ctl0::Register>,
+    _ctl1: ReadOnly<u32>,
 
-    _reserved1: [VolatileCell<u8>; 0x18],
+    _reserved1: [ReadOnly<u8>; 0x18],
 
-    jtag_cfg: VolatileCell<u32>,
+    jtag_cfg: ReadWrite<u32, JtagCfg::Register>,
 }
 
 register_bitfields![
@@ -57,7 +57,42 @@ register_bitfields![
         ]
     ],
     McuCfg [
+        VIRT_OFF    OFFSET(17) NUMBITS(1) [],
+        FIXED_WU_EN OFFSET(16) NUMBITS(1) [],
 
+        // SRAM Retention enabled
+        //  0x00 - Retention disabled
+        //  0x01 - Retention enabled for BANK0
+        //  0x03 - Retention enabled for BANK0, BANK1
+        //  0x07 - Retention enabled for BANK0, BANK1, BANK2
+        //  0x0F - Retention enabled for BANK0, BANK1, BANK2, BANK3
+        SRAM_RET_EN OFFSET(0)  NUMBITS(4) [
+            OFF = 0x00,
+            ON = 0x0F   // Default to enable retention in all banks
+        ]
+    ],
+    AuxCfg [
+        RAM_RET_EN OFFSET(0) NUMBITS(1) []
+    ],
+    AuxCtl [
+        RESET_REQ    OFFSET(31) NUMBITS(1) [],
+        AUX_FORCE_ON OFFSET(0) NUMBITS(1) []
+    ],
+    PwrStat [
+        AUX_PWR_DWN OFFSET(9) NUMBITS(1) [],
+        JTAG_PD_ON  OFFSET(6) NUMBITS(1) [],
+        AUX_PD_ON   OFFSET(5) NUMBITS(1) [],
+        MCU_PD_ON   OFFSET(4) NUMBITS(1) [],
+        AUX_BUS_CONNECTED OFFSET(2) NUMBITS(1) [],
+        AUX_RESET_DONE OFFSET(1) NUMBITS(1) []
+    ],
+    Ctl0 [
+        // Controls whether MCU & AUX requesting to be powered off
+        // will enable a transition to powerdown (0 = Enabled, 1 = Disabled)
+        PWR_DWN_DIS     OFFSET(8) NUMBITS(1) []
+    ],
+    JtagCfg [
+        JTAG_PD_FORCE_ON    OFFSET(8) NUMBITS(1) []
     ]
 ];
 
@@ -67,7 +102,7 @@ pub struct AonEvent {
     aon_wuc_regs: *const AonWucRegisters,
 }
 
-pub static mut AON_EVENT: AonEvent = AonEvent::new();
+pub const AON: AonEvent = AonEvent::new();
 
 impl AonEvent {
     const fn new() -> AonEvent {
@@ -98,7 +133,49 @@ impl AonEvent {
         regs.event_to_mcu_sel.set(0x003F3F3F);
     }
 
-    pub fn aux_disable_sram_retention(&self) {
+    pub fn aux_set_ram_retention(&self, enabled: bool) {
+        let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        regs.aux_cfg.modify({
+            if enabled { AuxCfg::RAM_RET_EN::SET } else { AuxCfg::RAM_RET_EN::CLEAR }
+        });
+    }
 
+    pub fn aux_wakeup(&self, wakeup: bool) {
+        let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        regs.aux_ctl.modify({
+            if wakeup { AuxCtl::AUX_FORCE_ON::SET } else { AuxCtl::AUX_FORCE_ON::CLEAR }
+        });
+    }
+
+    pub fn aux_is_on(&self) -> bool {
+        let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        regs.pwr_stat.is_set(PwrStat::AUX_PD_ON)
+    }
+
+    pub fn jtag_set_enabled(&self, enabled: bool) {
+        let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        regs.jtag_cfg.modify({
+            if enabled { JtagCfg::JTAG_PD_FORCE_ON::SET } else { JtagCfg::JTAG_PD_FORCE_ON::CLEAR }
+        });
+    }
+
+    pub fn mcu_set_ram_retention(&self, on: bool) {
+        let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        regs.mcu_cfg.modify({
+            if on { McuCfg::SRAM_RET_EN::ON } else { McuCfg::SRAM_RET_EN::OFF }
+        });
+    }
+
+    pub fn mcu_power_down(&self) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        // Disable the clock
+        aon_regs.mcu_clk.modify(
+            McuClk::PWR_DWN_SRC::NO_CLOCK
+        );
+
+        // Enable power down of the MCU
+        aon_regs.ctl0.modify(
+            Ctl0::PWR_DWN_DIS::CLEAR
+        );
     }
 }
