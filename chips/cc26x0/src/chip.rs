@@ -16,7 +16,6 @@ use prcm;
 use kernel::support;
 use peripherals;
 use aux;
-use vims;
 use aon;
 
 #[repr(C)]
@@ -155,8 +154,6 @@ impl kernel::Chip for Cc26x0 {
                     aon::AON.mcu_power_down();
 
                     rtc::RTC.sync();
-
-                    vims::disable();
 
                     // Set the deep sleep bit
                     regs.scr.modify(SystemControl::SLEEP_DEEP::SET + SystemControl::SEVONPEND::SET);
