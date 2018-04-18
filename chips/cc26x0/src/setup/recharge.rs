@@ -38,7 +38,6 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#[no_mangle]
 pub unsafe extern fn norom_aonbat_mon_temperature_get_deg_c() -> i32 {
     let signed_temp = *((0x40095000i32 + 0x30i32) as (*mut usize)) as (i32) << 32i32 - 9i32 - 8i32 >> 32i32 - 9i32 - 8i32;
     let voltage_slope = *((0x50001000i32 + 0x30ci32) as (*mut u8)) as (i8);
@@ -78,7 +77,6 @@ unsafe extern fn setup_sign_extend_vddr_trim_value(
     i32signed_vddr_val
 }
 
-#[no_mangle]
 pub unsafe extern fn before_power_down(
     xosc_power_mode: u32
 ) {
@@ -234,7 +232,6 @@ pub unsafe extern fn before_power_down(
     }
 }
 
-#[no_mangle]
 pub unsafe extern fn after_power_down() {
     let mut cur_temp: i32;
     // let mut longest_recharge_period: u32;
