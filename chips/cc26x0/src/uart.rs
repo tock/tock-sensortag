@@ -71,6 +71,7 @@ pub struct UART {
     client: Cell<Option<&'static uart::Client>>,
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
+    params: Cell<Option<kernel::hil::uart::UARTParams>>,
 }
 
 pub static mut UART0: UART = UART::new();
@@ -82,6 +83,7 @@ impl UART {
             client: Cell::new(None),
             tx_pin: Cell::new(None),
             rx_pin: Cell::new(None),
+            params: Cell::new(None),
         }
     }
 
@@ -90,7 +92,7 @@ impl UART {
         self.rx_pin.set(Some(rx_pin));
     }
 
-    pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
+    pub fn configure(&self) {
         let tx_pin = match self.tx_pin.get() {
             Some(pin) => pin,
             None => panic!("Tx pin not configured for UART")
@@ -100,6 +102,8 @@ impl UART {
             Some(pin) => pin,
             None => panic!("Rx pin not configured for UART")
         };
+
+        let params = self.params.get().expect("No params supplied to uart.");
 
         unsafe {
             /*
@@ -198,6 +202,10 @@ impl UART {
         let regs = unsafe { &*self.regs };
         !regs.fr.is_set(Flags::TX_FIFO_FULL)
     }
+
+    pub fn set_params(&self, params: kernel::hil::uart::UARTParams) {
+        self.params.set(Some(params));
+    }
 }
 
 impl kernel::hil::uart::UART for UART {
@@ -208,7 +216,8 @@ impl kernel::hil::uart::UART for UART {
     fn init(&self, params: kernel::hil::uart::UARTParams) {
         self.power_and_clock();
         self.disable_interrupts();
-        self.configure(params);
+        self.set_params(params);
+        self.configure();
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
@@ -229,6 +238,9 @@ impl kernel::hil::uart::UART for UART {
 
 impl peripheral_manager::PowerClient for UART {
     fn before_sleep(&self, _sleep_mode: u32) {
+        // Wait for all transmissions to occur
+        while self.busy() {}
+
         unsafe { PM.release_resource(prcm::PowerDomain::Serial as u32); }
         prcm::Clock::disable_uart_run();
     }
@@ -236,6 +248,7 @@ impl peripheral_manager::PowerClient for UART {
     fn after_wakeup(&self, _sleep_mode: u32) {
         unsafe { PM.request_resource(prcm::PowerDomain::Serial as u32); }
         prcm::Clock::enable_uart_run();
+        self.configure();
     }
 
     fn lowest_sleep_mode(&self) -> u32 {

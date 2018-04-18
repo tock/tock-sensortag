@@ -127,6 +127,7 @@ register_bitfields![
         RFC_ON      OFFSET(0) NUMBITS(1) []
     ],
     PowerDomain1 [
+        VIMS_ON     OFFSET(3) NUMBITS(1) [],
         RFC_ON      OFFSET(2) NUMBITS(1) [],
         CPU_ON      OFFSET(1) NUMBITS(1) []
     ],
@@ -139,6 +140,7 @@ register_bitfields![
         RFC_ON      OFFSET(0) NUMBITS(1) []
     ],
     PowerDomainStatus1 [
+        VIMS_ON     OFFSET(3) NUMBITS(1) [],
         RFC_ON      OFFSET(2) NUMBITS(1) [],
         CPU_ON      OFFSET(1) NUMBITS(1) []
     ]
@@ -167,9 +169,30 @@ pub fn mcu_power_down() {
         SECDMAClockGate::DMA_CLK_EN::CLEAR
             + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
     );
+
     prcm_commit();
 
-    regs.vd_ctl.modify(VDControl::MCU_VD_POWERDOWN::SET);
+    //regs.vd_ctl.modify(/*VDControl::MCU_VD_POWERDOWN::SET +*/ VDControl::ULDO::SET);
+}
+
+pub fn disable_dma_and_crypto() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+
+    // TODO(cpluss): do not override these, detect if enabled instead
+    regs.sec_dma_clk_deep_sleep.modify(
+        SECDMAClockGate::DMA_CLK_EN::CLEAR
+            + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
+    );
+}
+
+pub fn acquire_uldo() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+    regs.vd_ctl.modify(/*VDControl::MCU_VD_POWERDOWN::SET +*/ VDControl::ULDO::SET);
+}
+
+pub fn release_uldo() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+    regs.vd_ctl.modify(VDControl::ULDO::CLEAR);
 }
 
 pub enum PowerDomain {
@@ -218,9 +241,10 @@ impl Power {
             PowerDomain::CPU => {
                 regs.pd_ctl1.modify(PowerDomain1::CPU_ON::SET);
                 while !Power::is_enabled(PowerDomain::CPU) {}
-            }
-            _ => {
-                panic!("Tried to turn on a power domain not yet specified!");
+            },
+            PowerDomain::VIMS => {
+                regs.pd_ctl1.modify(PowerDomain1::VIMS_ON::SET);
+                while !Power::is_enabled(PowerDomain::VIMS) {}
             }
         }
     }
@@ -241,9 +265,9 @@ impl Power {
             },
             PowerDomain::CPU => {
                 regs.pd_ctl1.modify(PowerDomain1::CPU_ON::CLEAR);
-            }
-            _ => {
-                panic!("Tried to turn on a power domain not yet specified!");
+            },
+            PowerDomain::VIMS => {
+                regs.pd_ctl1.modify(PowerDomain1::VIMS_ON::CLEAR);
             }
         }
     }
@@ -258,7 +282,7 @@ impl Power {
                 && regs.pd_stat0.is_set(PowerDomainStatus0::RFC_ON)
             },
             PowerDomain::CPU => regs.pd_stat1.is_set(PowerDomainStatus1::CPU_ON),
-            _ => false,
+            PowerDomain::VIMS => regs.pd_stat1.is_set(PowerDomainStatus1::VIMS_ON),
         }
     }
 }
@@ -296,8 +320,8 @@ impl Clock {
     pub fn enable_trng() {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.sec_dma_clk_run.write(SECDMAClockGate::TRNG_CLK_EN::SET);
-        regs.sec_dma_clk_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
-        regs.sec_dma_clk_deep_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
+        // regs.sec_dma_clk_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
+        // regs.sec_dma_clk_deep_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
 
         prcm_commit();
     }

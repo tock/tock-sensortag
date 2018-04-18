@@ -135,4 +135,12 @@ impl Oscillator {
             }
         }
     }
+
+    pub fn switch_all_to_hf_rc(&self) {
+        unsafe {
+            oscfh::clock_source_set(0x02 | 0x01, 0x00);
+
+            oscfh::source_switch();
+        }
+    }
 }
