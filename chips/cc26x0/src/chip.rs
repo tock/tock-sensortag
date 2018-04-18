@@ -2,7 +2,6 @@ use cortexm3::{self, nvic};
 use cc26xx::gpio;
 use cc26xx::peripheral_interrupts::*;
 use kernel::common::regs::ReadWrite;
-use kernel::hil::gpio::Pin;
 
 const X0_RF_CPE1: u32 = 2;
 const X0_RF_CPE0: u32 = 9;
@@ -18,7 +17,6 @@ use kernel::support;
 use peripherals;
 use aux;
 use vims;
-use osc;
 use aon;
 
 #[repr(C)]
