@@ -37,8 +37,6 @@ pub unsafe fn init() {
     }
 }
 
-const AON_IOC: u32 = 0x4009_4000;
-
 pub struct SystemControlRegisters {
     scr: ReadWrite<u32, SystemControl::Register>,
 }
@@ -58,8 +56,7 @@ const SYS_CTRL_BASE: u32 = 0xE000ED10;
 pub unsafe fn prepare_deep_sleep() {
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
-    let iolatch: &ReadWrite<u32> = &*((AON_IOC + 0xC) as *const ReadWrite<u32>);
-    iolatch.set(0x00);
+    aon::AON.lock_io_pins(true);
 
     // We need to allow the aux domain to sleep when we enter sleep mode
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
@@ -128,8 +125,8 @@ pub unsafe fn prepare_wakeup() {
     // Again, sync with the AON since the ULDO might have been released.
     rtc::RTC.sync();
 
-    let iolatch: &ReadWrite<u32> = &*((AON_IOC + 0xC) as *const ReadWrite<u32>);
-    iolatch.set(0x01);
+    // Unlock IO pins and let them be controlled by GPIO
+    aon::AON.lock_io_pins(false);
 
     recharge::after_power_down();
 
