@@ -19,6 +19,7 @@ use peripherals;
 use aux;
 use vims;
 use osc;
+use aon;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -138,11 +139,8 @@ impl kernel::Chip for Cc26x0 {
                     // Power down the AUX
                     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
 
-                    aux::AUX_CTL.set_mcu_power_down_source(0);
-
-                    // Set the ram retention to retain all SRAM
-                    // banks and memory
-                    aux::AUX_CTL.set_ram_retention(0xF);
+                    // Set the ram retention to retain SRAM
+                    aon::AON.mcu_set_ram_retention(true);
 
                     // Disable all domains except Peripherals & Serial
                     prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
@@ -150,9 +148,10 @@ impl kernel::Chip for Cc26x0 {
                     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
 
                     // Disable JTAG entirely
-                    aux::AUX_CTL.set_jtag_enabled(false);
+                    aon::AON.jtag_set_enabled(false);
 
-                    aux::AUX_CTL.pwr_dwn_dis();
+                    // Enable power down of the MCU
+                    aon::AON.mcu_power_down();
 
                     norom_sys_ctrl_set_recharge_before_power_down(0);
 

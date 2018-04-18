@@ -67,7 +67,7 @@ pub unsafe fn reset_handler() {
     cc26x0::init();
 
     // Setup AON event defaults
-    aon::AON_EVENT.setup();
+    aon::AON.setup();
 
     // Setup power management and register all resources to be used
     power::init();
