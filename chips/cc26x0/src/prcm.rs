@@ -159,6 +159,18 @@ fn prcm_commit() {
     while !regs.clk_load_ctl.is_set(ClockLoad::LOAD_DONE) {}
 }
 
+/// This force disables DMA & Crypto clocks, since
+/// they can not be turned on if we want to transition into deep sleep.
+pub fn force_disable_dma_and_crypto() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+
+    // TODO(cpluss): do not override these, detect if enabled instead
+    regs.sec_dma_clk_deep_sleep.modify(
+        SECDMAClockGate::DMA_CLK_EN::CLEAR
+            + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
+    );
+}
+
 /// The ULDO power source is a temporary power source
 /// which could be enable to drive Peripherals in deep sleep.
 pub fn acquire_uldo() {
