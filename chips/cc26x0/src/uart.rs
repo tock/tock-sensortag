@@ -241,7 +241,16 @@ impl peripheral_manager::PowerClient for UART {
         // Wait for all transmissions to occur
         while self.busy() {}
 
-        unsafe { PM.release_resource(prcm::PowerDomain::Serial as u32); }
+        unsafe {
+            self.tx_pin.get().map(|pin| {
+                gpio::PORT[pin as usize].disable();
+            });
+            self.rx_pin.get().map(|pin| {
+                gpio::PORT[pin as usize].disable();
+            });
+
+            PM.release_resource(prcm::PowerDomain::Serial as u32);
+        }
         prcm::Clock::disable_uart_run();
     }
 
