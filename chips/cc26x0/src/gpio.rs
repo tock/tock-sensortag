@@ -115,7 +115,7 @@ impl hil::gpio::Pin for GPIOPin {
 
     fn disable(&self) {
         ioc::IOCFG[self.pin].enable_input();
-        hil::gpio::PinCtl::set_input_mode(self, hil::gpio::InputMode::PullNone);
+        hil::gpio::PinCtl::set_input_mode(self, hil::gpio::InputMode::PullDown);
     }
 
     fn set(&self) {
