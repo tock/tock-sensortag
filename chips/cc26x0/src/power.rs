@@ -1,7 +1,7 @@
 use power_manager::{PowerManager, Resource, ResourceManager};
 use prcm::{Power,PowerDomain};
+use cortexm3::scb;
 
-use kernel::common::regs::ReadWrite;
 use aux;
 use aon;
 use prcm;
@@ -37,21 +37,6 @@ pub unsafe fn init() {
     }
 }
 
-pub struct SystemControlRegisters {
-    scr: ReadWrite<u32, SystemControl::Register>,
-}
-
-register_bitfields![
-    u32,
-    SystemControl [
-        SLEEP_ON_EXIT   OFFSET(1)   NUMBITS(1) [], // Go to sleep after ISR
-        SLEEP_DEEP      OFFSET(2)   NUMBITS(1) [], // Enable deep sleep
-        SEVONPEND       OFFSET(4)   NUMBITS(1) []  // Wake up on all events (even disabled interrupts)
-    ]
-];
-
-const SYS_CTRL_BASE: u32 = 0xE000ED10;
-
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
     // In order to preserve the pins we need to apply an
@@ -76,14 +61,12 @@ pub unsafe fn prepare_deep_sleep() {
     // disabled if some has been forgotten.
     prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
     prcm::Power::disable_domain(prcm::PowerDomain::RFC);
+    prcm::Power::disable_domain(prcm::PowerDomain::Serial);
+    prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
 
-    // If either Peripherals nor Serial domain is powered on, we need to supply
-    // power using the ULDO power supply; which is a low power driver
-    if !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals)
-        && !prcm::Power::is_enabled(prcm::PowerDomain::Serial) {
-        prcm::acquire_uldo();
-    }
+    // We need to supply power using the ULDO power supply; which is a low power supply
+    prcm::acquire_uldo();
 
     // Disable JTAG entirely, otherwise we'll never
     // transition into deep sleep (if a debugger is attached, we still won't).
@@ -101,8 +84,7 @@ pub unsafe fn prepare_deep_sleep() {
     rtc::RTC.sync();
 
     // Set the deep sleep bit
-    let regs: &SystemControlRegisters = &*(SYS_CTRL_BASE as *const SystemControlRegisters);
-    regs.scr.modify(SystemControl::SLEEP_DEEP::SET + SystemControl::SEVONPEND::SET);
+    scb::set_sleepdeep();
 }
 
 /// Perform necessary setup once we've woken up from deep sleep
@@ -121,6 +103,8 @@ pub unsafe fn prepare_wakeup() {
     // Enable the CPU power domain once again, or ensure that it is powered (it often are
     // when we transition from sleep).
     prcm::Power::enable_domain(prcm::PowerDomain::CPU);
+    prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
+    prcm::Power::enable_domain(prcm::PowerDomain::Serial);
 
     // Again, sync with the AON since the ULDO might have been released.
     rtc::RTC.sync();
@@ -134,6 +118,5 @@ pub unsafe fn prepare_wakeup() {
     rtc::RTC.sync();
 
     // Clear the deep sleep bit
-    let regs: &SystemControlRegisters = &*(SYS_CTRL_BASE as *const SystemControlRegisters);
-    regs.scr.modify(SystemControl::SLEEP_DEEP::CLEAR);
+    scb::unset_sleepdeep();
 }
