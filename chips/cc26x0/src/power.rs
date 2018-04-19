@@ -46,8 +46,12 @@ pub unsafe fn prepare_deep_sleep() {
     // We need to allow the aux domain to sleep when we enter sleep mode
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
 
+    // Set the MCU power down clock to no clock,
+    // this will reduce the power consumption.
+    aon::AON.mcu_disable_power_down_clock();
+
     // Set the ram retention to retain SRAM
-    aon::AON.mcu_set_ram_retention(true);
+    aon::AON.mcu_set_ram_retention(false);
 
     // Force disable dma & crypto
     // This due to that we can not successfully power down the MCU
@@ -73,7 +77,7 @@ pub unsafe fn prepare_deep_sleep() {
     aon::AON.jtag_set_enabled(false);
 
     // Enable power down of the MCU
-    aon::AON.mcu_power_down();
+    aon::AON.mcu_power_down_enable();
 
     // We need to setup the recharge algorithm by TI, since this
     // will tweak the variables depending on the power & current in order to successfully
