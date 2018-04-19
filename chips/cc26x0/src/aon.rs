@@ -188,13 +188,16 @@ impl AonEvent {
         });
     }
 
-    pub fn mcu_power_down(&self) {
+    pub fn mcu_disable_power_down_clock(&self) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         // Disable the clock
         aon_regs.mcu_clk.modify(
             McuClk::PWR_DWN_SRC::NO_CLOCK
         );
+    }
 
+    pub fn mcu_power_down_enable(&self) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         // Enable power down of the MCU
         aon_regs.ctl0.modify(
             Ctl0::PWR_DWN_DIS::CLEAR
