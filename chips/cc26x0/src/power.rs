@@ -7,6 +7,7 @@ use aon;
 use prcm;
 use setup::recharge;
 use rtc;
+use osc;
 
 pub static mut PM: PowerManager<RegionManager> = PowerManager::new(RegionManager);
 
@@ -39,6 +40,13 @@ pub unsafe fn init() {
 
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
+    // Ensure that we're running on the internal oscillator and
+    // not the external (in case the radio has been used).
+    if osc::OSC.clock_source_get(osc::ClockType::HF) != osc::HF_RCOSC {
+        osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
+        osc::OSC.perform_switch();
+    }
+
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
     aon::AON.lock_io_pins(true);
@@ -51,7 +59,7 @@ pub unsafe fn prepare_deep_sleep() {
     aon::AON.mcu_disable_power_down_clock();
 
     // Set the ram retention to retain SRAM
-    aon::AON.mcu_set_ram_retention(false);
+    aon::AON.mcu_set_ram_retention(true);
 
     // Force disable dma & crypto
     // This due to that we can not successfully power down the MCU
