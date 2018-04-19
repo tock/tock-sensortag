@@ -284,7 +284,7 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.gpio_clk_gate_run.write(ClockGate::CLK_EN::SET);
         regs.gpio_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
-        regs.gpio_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+        //regs.gpio_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
 
         prcm_commit();
     }
@@ -293,7 +293,7 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.uart_clk_gate_run.write(ClockGate::CLK_EN::SET);
         regs.uart_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
-        regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+        //regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
 
         prcm_commit();
     }
@@ -302,7 +302,7 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.uart_clk_gate_run.write(ClockGate::CLK_EN::CLEAR);
         regs.uart_clk_gate_sleep.write(ClockGate::CLK_EN::CLEAR);
-        regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::CLEAR);
+        //regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::CLEAR);
 
         prcm_commit();
     }
@@ -327,7 +327,7 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.i2c_clk_gate_run.write(ClockGate::CLK_EN::SET);
         regs.i2c_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
-        regs.i2c_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+        //regs.i2c_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
 
         prcm_commit();
     }
@@ -336,7 +336,7 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.gpt_clk_gate_run.write(ClockGate::CLK_EN::SET);
         regs.gpt_clk_gate_sleep.write(ClockGate::CLK_EN::SET);
-        regs.gpt_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
+        //regs.gpt_clk_gate_deep_sleep.write(ClockGate::CLK_EN::SET);
 
         prcm_commit();
     }
