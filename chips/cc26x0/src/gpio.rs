@@ -7,6 +7,7 @@
 use core::cell::Cell;
 use core::ops::{Index, IndexMut};
 use kernel::common::regs::{ReadWrite, WriteOnly};
+use kernel::hil::gpio::Pin;
 use kernel::hil;
 use prcm;
 use ioc;
@@ -32,13 +33,17 @@ pub struct GpioRegisters {
     pub evflags: ReadWrite<u32>,
 }
 
-pub fn power_on_gpio() {
+pub unsafe fn power_on_gpio() {
     // Power on peripherals (eg. GPIO)
     prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
     // Wait for it to turn on until we continue
     while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
     // Enable the GPIO clocks
     prcm::Clock::enable_gpio();
+
+    for pin in PORT.pins.iter() {
+        pin.disable();
+    }
 }
 
 pub struct GPIOPin {
@@ -109,6 +114,7 @@ impl hil::gpio::Pin for GPIOPin {
     }
 
     fn disable(&self) {
+        ioc::IOCFG[self.pin].enable_input();
         hil::gpio::PinCtl::set_input_mode(self, hil::gpio::InputMode::PullNone);
     }
 
