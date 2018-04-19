@@ -189,6 +189,11 @@ impl IocfgPin {
         let pin_ioc = &regs.iocfg[self.pin];
         pin_ioc.modify(IoConfiguration::EDGE_IRQ_EN::CLEAR);
     }
+
+    pub fn configure_unused_pin(&self) {
+        self.enable_input();
+        self.set_input_mode(hil::gpio::InputMode::PullDown);
+    }
 }
 
 pub static IOCFG: [IocfgPin; 32] = [
