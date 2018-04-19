@@ -76,12 +76,12 @@ impl Ble {
             However, it takes a while for it to pulse correctly, so we enable it
             before switching to it.
         */
-        osc::OSCILLATOR_CONTROL.request_switch_to_hf_xosc();
+        osc::OSC.request_switch_to_hf_xosc();
 
         self.rfc.enable();
         self.rfc.start_rat();
 
-        osc::OSCILLATOR_CONTROL.switch_to_hf_xosc();
+        osc::OSC.perform_switch();
 
         unsafe {
             let reg_overrides: u32 = BLE_OVERRIDES.as_mut_ptr() as u32; //(&BLE_OVERRIDES[0] as *const u32) as u32;
