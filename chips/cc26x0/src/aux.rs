@@ -7,7 +7,7 @@ use aon;
 
 struct AuxWucRegisters {
     mod_clk_en0: ReadWrite<u32, ModClkEn0::Register>,
-    pwr_off_req: WriteOnly<u32, PwrOffReq::Register>,
+    _pwr_off_req: WriteOnly<u32, PwrOffReq::Register>,
     pwr_dwn_req: WriteOnly<u32, PwrDwnReq::Register>,
     _pwr_dwn_ack: ReadOnly<u32>,
 
@@ -25,7 +25,7 @@ struct AuxWucRegisters {
 
     _rtc_subsec_inc0: ReadOnly<u32>,
     _rtc_subsec_inc1: ReadOnly<u32>,
-    _rtc_subsec_inc_ctl: ReadOnly<k32>,
+    _rtc_subsec_inc_ctl: ReadOnly<u32>,
 
     mcu_bus_ctl: WriteOnly<u32, McuBusCtl::Register>,
     _mcu_bus_stat: ReadOnly<u32>,

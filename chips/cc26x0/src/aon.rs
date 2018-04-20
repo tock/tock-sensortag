@@ -234,6 +234,13 @@ impl Aon {
         );
     }
 
+    pub fn aux_disable_power_down_clock(&self) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        aon_regs.aux_clk.modify(
+            AuxClk::PWR_DWN_SRC::NO_CLOCK
+        );
+    }
+
     pub fn mcu_power_down_enable(&self) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         // Enable power down of the MCU
