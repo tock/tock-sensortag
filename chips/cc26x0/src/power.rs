@@ -40,6 +40,11 @@ pub unsafe fn init() {
 
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
+    // Enable power down of the MCU
+    aon::AON.mcu_power_down_enable();
+
+    aon::AON.set_dcdc_enabled(true);
+
     // Ensure that we're running on the internal oscillator and
     // not the external (in case the radio has been used).
     if osc::OSC.clock_source_get(osc::ClockType::HF) != osc::HF_RCOSC {
@@ -47,12 +52,15 @@ pub unsafe fn prepare_deep_sleep() {
         osc::OSC.perform_switch();
     }
 
-    // In order to preserve the pins we need to apply an
-    // io latch which will freeze the states of each pin during sleep modes
-    aon::AON.lock_io_pins(true);
+    // We need to setup the recharge algorithm by TI, since this
+    // will tweak the variables depending on the power & current in order to successfully
+    // recharge.
+    recharge::before_power_down(0);
 
-    // We need to allow the aux domain to sleep when we enter sleep mode
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+    // Force disable dma & crypto
+    // This due to that we can not successfully power down the MCU
+    // without them disabled (see p. 496 in the docs)
+    prcm::force_disable_dma_and_crypto();
 
     // Set the MCU power down clock to no clock,
     // this will reduce the power consumption.
@@ -61,10 +69,19 @@ pub unsafe fn prepare_deep_sleep() {
     // Set the ram retention to retain SRAM
     aon::AON.mcu_set_ram_retention(true);
 
-    // Force disable dma & crypto
-    // This due to that we can not successfully power down the MCU
-    // without them disabled (see p. 496 in the docs)
-    prcm::force_disable_dma_and_crypto();
+    // Disable JTAG entirely, otherwise we'll never
+    // transition into deep sleep (if a debugger is attached, we still won't).
+    aon::AON.jtag_set_enabled(false);
+
+    // We need to allow the aux domain to sleep when we enter sleep mode
+    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+
+    // TODO(cpluss): request AUX_WUC.PWRDWNREQ.REQ
+    // TODO(cpluss): request AUX_WUC.MCUBUSCTL.DISCONNECT_REQ
+
+    // In order to preserve the pins we need to apply an
+    // io latch which will freeze the states of each pin during sleep modes
+    aon::AON.lock_io_pins(true);
 
     // Disable all domains except Peripherals & Serial
     // The peripheral & serial domain can be powered on during deep sleep,
@@ -79,18 +96,6 @@ pub unsafe fn prepare_deep_sleep() {
 
     // We need to supply power using the ULDO power supply; which is a low power supply
     prcm::acquire_uldo();
-
-    // Disable JTAG entirely, otherwise we'll never
-    // transition into deep sleep (if a debugger is attached, we still won't).
-    aon::AON.jtag_set_enabled(false);
-
-    // Enable power down of the MCU
-    aon::AON.mcu_power_down_enable();
-
-    // We need to setup the recharge algorithm by TI, since this
-    // will tweak the variables depending on the power & current in order to successfully
-    // recharge.
-    recharge::before_power_down(0);
 
     // Sync with the RTC before we are ready to transition into deep sleep
     rtc::RTC.sync();
