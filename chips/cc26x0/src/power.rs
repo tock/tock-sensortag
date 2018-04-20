@@ -1,3 +1,4 @@
+use kernel::common::VolatileCell;
 use power_manager::{PowerManager, Resource, ResourceManager};
 use prcm::{Power,PowerDomain};
 use cortexm3::scb;
@@ -36,6 +37,14 @@ pub unsafe fn init() {
     for pwr_region in POWER_REGIONS.iter() {
         PM.register_resource(&pwr_region);
     }
+}
+
+fn vims_disable() {
+    const VIMS_BASE: u32 = 0x4003_4000;
+    const VIMS_O_CTL: u32 = 0x00000004;
+
+    let vims_ctl: &VolatileCell<u32> = unsafe { &*((VIMS_BASE + VIMS_O_CTL) as *const VolatileCell<u32>) };
+    vims_ctl.set(0x00000003); // disable VIMS
 }
 
 /// Transition into deep sleep
@@ -97,6 +106,8 @@ pub unsafe fn prepare_deep_sleep() {
     prcm::Power::disable_domain(prcm::PowerDomain::Serial);
     prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
+
+    vims_disable();
 
     // We need to supply power using the ULDO power supply; which is a low power supply
     prcm::acquire_uldo();
