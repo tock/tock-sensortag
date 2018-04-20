@@ -8,7 +8,7 @@ use aon;
 struct AuxWucRegisters {
     mod_clk_en0: ReadWrite<u32, ModClkEn0::Register>,
     pwr_off_req: WriteOnly<u32, PwrOffReq::Register>,
-    _pwr_dwn_req: ReadOnly<u32>,
+    pwr_dwn_req: WriteOnly<u32, PwrDwnReq::Register>,
     _pwr_dwn_ack: ReadOnly<u32>,
 
     _clk_lf_req: ReadOnly<u32>,
@@ -25,7 +25,7 @@ struct AuxWucRegisters {
 
     _rtc_subsec_inc0: ReadOnly<u32>,
     _rtc_subsec_inc1: ReadOnly<u32>,
-    _rtc_subsec_inc_ctl: ReadOnly<u32>,
+    _rtc_subsec_inc_ctl: ReadOnly<k32>,
 
     mcu_bus_ctl: WriteOnly<u32, McuBusCtl::Register>,
     _mcu_bus_stat: ReadOnly<u32>,
@@ -51,6 +51,9 @@ register_bitfields![
         SMPH            OFFSET(0) NUMBITS(1) []  // Clock gate for AUX_SMPH (Semaphore)
     ],
     PwrOffReq [
+        REQ OFFSET(0) NUMBITS(1) []
+    ],
+    PwrDwnReq [
         REQ OFFSET(0) NUMBITS(1) []
     ],
     McuBusCtl [
@@ -115,6 +118,7 @@ impl Aux {
 
         // Force the AUX to wake up
         self.wakeup_event(WakeupMode::WakeUp);
+
         // Wait for it to power up
         while self.power_status() != WakeupMode::WakeUp { }
     }
@@ -124,18 +128,9 @@ impl Aux {
             return
         }
 
-        // Disable SRAM retention of the aux
-        aon::AON.aux_set_ram_retention(false);
-
-        self.wakeup_event(WakeupMode::AllowSleep);
-
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
-
-        // Make a power off request and disconnect the bus
-        aux_regs.pwr_off_req.write(PwrOffReq::REQ::SET);
-        aux_regs.mcu_bus_ctl.write(McuBusCtl::DISCONNECT_REQ::SET);
-
-        while self.power_status() != WakeupMode::AllowSleep { }
+        // Make a power down request
+        aux_regs.pwr_dwn_req.write(PwrDwnReq::REQ::SET);
     }
 
     pub fn wakeup_event(&self, mode: WakeupMode) {
@@ -151,5 +146,11 @@ impl Aux {
         } else {
             WakeupMode::AllowSleep
         }
+    }
+
+    pub fn disconnect_bus(&self) {
+        let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
+        // Request a bus disconnection
+        aux_regs.mcu_bus_ctl.write(McuBusCtl::DISCONNECT_REQ::SET);
     }
 }

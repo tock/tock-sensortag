@@ -43,6 +43,7 @@ pub unsafe fn prepare_deep_sleep() {
     // Enable power down of the MCU
     aon::AON.mcu_power_down_enable();
 
+    // Use less recharge power by using DCDC
     aon::AON.set_dcdc_enabled(true);
 
     // Ensure that we're running on the internal oscillator and
@@ -66,6 +67,8 @@ pub unsafe fn prepare_deep_sleep() {
     // this will reduce the power consumption.
     aon::AON.mcu_disable_power_down_clock();
 
+    // TODO(cpluss): set AUX power down source to NO_CLOCK
+
     // Set the ram retention to retain SRAM
     aon::AON.mcu_set_ram_retention(true);
 
@@ -76,8 +79,8 @@ pub unsafe fn prepare_deep_sleep() {
     // We need to allow the aux domain to sleep when we enter sleep mode
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
 
-    // TODO(cpluss): request AUX_WUC.PWRDWNREQ.REQ
-    // TODO(cpluss): request AUX_WUC.MCUBUSCTL.DISCONNECT_REQ
+    aux::AUX_CTL.power_down();
+    aux::AUX_CTL.disconnect_bus();
 
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
