@@ -80,9 +80,8 @@ pub unsafe fn prepare_deep_sleep() {
 
     // We need to allow the aux domain to sleep when we enter sleep mode
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
-
     aux::AUX_CTL.power_down();
-    aux::AUX_CTL.disconnect_bus();
+    //aux::AUX_CTL.disconnect_bus();
 
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
