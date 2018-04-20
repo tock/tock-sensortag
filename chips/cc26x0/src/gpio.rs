@@ -33,7 +33,11 @@ pub struct GpioRegisters {
     pub evflags: ReadWrite<u32>,
 }
 
+use kernel::hil::gpio::PinCtl;
 pub unsafe fn power_on_gpio() {
+    const MPU_POWER: usize = 12;
+    const MIC_POWER: usize = 13;
+
     // Power on peripherals (eg. GPIO)
     prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
     // Wait for it to turn on until we continue
@@ -44,6 +48,15 @@ pub unsafe fn power_on_gpio() {
     for pin in PORT.pins.iter() {
         pin.disable();
     }
+
+    // Force the MPU to be off
+    PORT[MPU_POWER].make_output();
+    PORT[MPU_POWER].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[MPU_POWER].clear();
+
+    PORT[MIC_POWER].make_input();
+    PORT[MIC_POWER].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[MIC_POWER].clear();
 }
 
 pub struct GPIOPin {
@@ -86,6 +99,11 @@ impl GPIOPin {
     pub fn get_dout_all_pins(&self) -> u32 {
         let regs: &GpioRegisters = unsafe { &*self.regs };
         regs.dout_31_0.get()
+    }
+
+    fn disable_output(&self) {
+        let regs: &GpioRegisters = unsafe { &*self.regs };
+        regs.doe.set(regs.doe.get() & !self.pin_mask);
     }
 }
 
