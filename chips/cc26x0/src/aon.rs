@@ -14,7 +14,6 @@ pub struct AonIocRegisters {
     ioc_latch: ReadWrite<u32, IocLatch::Register>,
 }
 
-
 #[repr(C)]
 pub struct AonEventRegisters {
     mcu_wu_sel: VolatileCell<u32>,       // MCU Wake-up selector
@@ -41,6 +40,13 @@ struct AonWucRegisters {
     _reserved1: [ReadOnly<u8>; 0x18],
 
     jtag_cfg: ReadWrite<u32, JtagCfg::Register>,
+}
+
+#[repr(C)]
+struct AonSysctlRegisters {
+    pwrtcl: ReadWrite<u32, PwrCtl::Register>,
+    resetctl: ReadOnly<u32>,
+    sleepctl: ReadOnly<u32>
 }
 
 register_bitfields![
@@ -101,26 +107,43 @@ register_bitfields![
     JtagCfg [
         JTAG_PD_FORCE_ON    OFFSET(8) NUMBITS(1) []
     ],
-  IocLatch [
+    IocLatch [
         EN  OFFSET(0) NUMBITS(1) []
+    ],
+
+    // PwrCtl controls the power configuration to supply the VDDR to the
+    // entire chip (that is, the power source).
+    //      GLDO = Global LDO, uses higher current
+    //      DCDC = Regulated LDO, uses lower current (to conserve energy)
+    //      EXT  = Use an external power source
+    //  *NOTE*: DCDC_ACTIVE and DCDC_EN should always have the same value
+    PwrCtl [
+        // 0 = use GLDO in active mode, 1 = use DCDC in active mode
+        DCDC_ACTIVE  OFFSET(2) NUMBITS(1) [],
+        // 0 = DCDC/GLDO are used, 1 = DCDC/GLDO are bypassed and using a external regulater
+        EXT_REG_MODE OFFSET(1) NUMBITS(1) [],
+        // 0 = use GDLO for recharge, 1 = use DCDC for recharge
+        DCDC_EN      OFFSET(0) NUMBITS(1) []
     ]
 ];
 
 
-pub struct AonEvent {
+pub struct Aon {
     event_regs: *const AonEventRegisters,
     aon_wuc_regs: *const AonWucRegisters,
     aon_ioc_regs: *const AonIocRegisters,
+    aon_sysctl_regs: *const AonSysctlRegisters,
 }
 
-pub const AON: AonEvent = AonEvent::new();
+pub const AON: Aon = Aon::new();
 
-impl AonEvent {
-    const fn new() -> AonEvent {
-        AonEvent {
+impl Aon {
+    const fn new() -> Aon {
+        Aon {
             event_regs: 0x4009_3000 as *const AonEventRegisters,
             aon_wuc_regs: 0x4009_1000 as *const AonWucRegisters,
             aon_ioc_regs:  0x4009_4000 as *const AonIocRegisters,
+            aon_sysctl_regs: 0x4009_0000 as *const AonSysctlRegisters,
         }
     }
 
@@ -143,6 +166,21 @@ impl AonEvent {
         //      NOTE: the aon programmable interrupt will still be fired
         //            once a debugger is attached through JTAG.
         regs.event_to_mcu_sel.set(0x003F3F3F);
+    }
+
+    pub fn set_dcdc_enabled(&self, enabled: bool) {
+        let regs: &AonSysctlRegisters = unsafe { &*self.aon_sysctl_regs };
+        if enabled {
+            regs.pwrtcl.modify(
+                PwrCtl::DCDC_ACTIVE::SET
+                    + PwrCtl::DCDC_EN::SET
+            );
+        } else {
+            regs.pwrtcl.modify(
+                PwrCtl::DCDC_ACTIVE::CLEAR
+                    + PwrCtl::DCDC_EN::CLEAR
+            );
+        }
     }
 
     pub fn lock_io_pins(&self, lock: bool) {
