@@ -2,41 +2,61 @@
 //!
 //! NOTE: as of now, the aux controller can only be used by one process at a time.
 
-use kernel::common::VolatileCell;
+use kernel::common::regs::{ReadOnly,ReadWrite,WriteOnly};
 use aon;
 
 struct AuxWucRegisters {
-    mod_clk_en0: VolatileCell<u32>,
-    pwr_off_req: VolatileCell<u32>,
-    _pwr_dwn_req: VolatileCell<u32>,
-    _pwr_dwn_ack: VolatileCell<u32>,
+    mod_clk_en0: ReadWrite<u32, ModClkEn0::Register>,
+    pwr_off_req: WriteOnly<u32, PwrOffReq::Register>,
+    _pwr_dwn_req: ReadOnly<u32>,
+    _pwr_dwn_ack: ReadOnly<u32>,
 
-    _clk_lf_req: VolatileCell<u32>,
-    _clk_lf_ack: VolatileCell<u32>,
+    _clk_lf_req: ReadOnly<u32>,
+    _clk_lf_ack: ReadOnly<u32>,
 
     _res0: [u8; 0x10],
 
-    _wu_evflags: VolatileCell<u32>,
-    _wu_evclr: VolatileCell<u32>,
+    _wu_evflags: ReadOnly<u32>,
+    _wu_evclr: ReadOnly<u32>,
 
-    _adc_clk_ctl: VolatileCell<u32>,
-    _tdc_clk_ctl: VolatileCell<u32>,
-    _ref_clk_ctl: VolatileCell<u32>,
+    _adc_clk_ctl: ReadOnly<u32>,
+    _tdc_clk_ctl: ReadOnly<u32>,
+    _ref_clk_ctl: ReadOnly<u32>,
 
-    _rtc_subsec_inc0: VolatileCell<u32>,
-    _rtc_subsec_inc1: VolatileCell<u32>,
-    _rtc_subsec_inc_ctl: VolatileCell<u32>,
+    _rtc_subsec_inc0: ReadOnly<u32>,
+    _rtc_subsec_inc1: ReadOnly<u32>,
+    _rtc_subsec_inc_ctl: ReadOnly<u32>,
 
-    mcu_bus_ctl: VolatileCell<u32>,
-    _mcu_bus_stat: VolatileCell<u32>,
+    mcu_bus_ctl: WriteOnly<u32, McuBusCtl::Register>,
+    _mcu_bus_stat: ReadOnly<u32>,
 
-    _aon_ctl_stat: VolatileCell<u32>,
-    _aux_io_latch: VolatileCell<u32>,
+    _aon_ctl_stat: ReadOnly<u32>,
+    _aux_io_latch: ReadOnly<u32>,
 
-    _res1: VolatileCell<u32>,
+    _res1: ReadOnly<u32>,
 
-    _mod_clk_en1: VolatileCell<u32>,
+    _mod_clk_en1: ReadOnly<u32>,
 }
+
+register_bitfields![
+    u32,
+    ModClkEn0 [
+        AUX_ADI4        OFFSET(7) NUMBITS(1) [], // Clock gate for AUX_ADI4
+        AUX_DDI0_OSC    OFFSET(6) NUMBITS(1) [], // Clock gate for DDI0_OSC (Oscillator control)
+        TDC             OFFSET(5) NUMBITS(1) [], // Clock gate for AUX_TDCIF
+        ANAIF           OFFSET(4) NUMBITS(1) [], // Clock gate for AUX_ANAIF
+        TIMER           OFFSET(3) NUMBITS(1) [], // Clock gate for AUX_TIMER
+        AIODIO1         OFFSET(2) NUMBITS(1) [], // Clock gate for AUX_AIODIO1
+        AIODIO0         OFFSET(1) NUMBITS(1) [], // Clock gate for AUX_AIODIO0
+        SMPH            OFFSET(0) NUMBITS(1) []  // Clock gate for AUX_SMPH (Semaphore)
+    ],
+    PwrOffReq [
+        REQ OFFSET(0) NUMBITS(1) []
+    ],
+    McuBusCtl [
+        DISCONNECT_REQ OFFSET(0) NUMBITS(1) []
+    ]
+];
 
 pub struct Aux {
     aux_regs: *const AuxWucRegisters,
@@ -68,10 +88,10 @@ impl Aux {
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
         match clock {
             AuxClock::OscillatorControl => {
-                aux_regs.mod_clk_en0.set(aux_regs.mod_clk_en0.get() | 0x40);
+                aux_regs.mod_clk_en0.modify(ModClkEn0::AUX_DDI0_OSC::SET);
             },
             AuxClock::Semaphores => {
-                aux_regs.mod_clk_en0.set(aux_regs.mod_clk_en0.get() | 0x1);
+                aux_regs.mod_clk_en0.modify(ModClkEn0::SMPH::SET);
             }
         }
     }
@@ -80,10 +100,10 @@ impl Aux {
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
         match clock {
             AuxClock::OscillatorControl => {
-                (aux_regs.mod_clk_en0.get() & 0x40) != 0
+                aux_regs.mod_clk_en0.is_set(ModClkEn0::AUX_DDI0_OSC)
             },
             AuxClock::Semaphores => {
-                (aux_regs.mod_clk_en0.get() & 0x1) != 0
+                aux_regs.mod_clk_en0.is_set(ModClkEn0::SMPH)
             }
         }
     }
@@ -112,8 +132,8 @@ impl Aux {
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
 
         // Make a power off request and disconnect the bus
-        aux_regs.pwr_off_req.set(1);
-        aux_regs.mcu_bus_ctl.set(1);
+        aux_regs.pwr_off_req.write(PwrOffReq::REQ::SET);
+        aux_regs.mcu_bus_ctl.write(McuBusCtl::DISCONNECT_REQ::SET);
 
         while self.power_status() != WakeupMode::AllowSleep { }
     }
