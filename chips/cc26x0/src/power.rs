@@ -67,7 +67,9 @@ pub unsafe fn prepare_deep_sleep() {
     // this will reduce the power consumption.
     aon::AON.mcu_disable_power_down_clock();
 
-    // TODO(cpluss): set AUX power down source to NO_CLOCK
+    // Set the AUX power down clock to no clock,
+    // this will further reduce the power consumption.
+    aon::AON.aux_disable_power_down_clock();
 
     // Set the ram retention to retain SRAM
     aon::AON.mcu_set_ram_retention(true);
