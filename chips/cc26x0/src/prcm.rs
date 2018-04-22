@@ -169,6 +169,8 @@ pub fn force_disable_dma_and_crypto() {
         SECDMAClockGate::DMA_CLK_EN::CLEAR
             + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
     );
+
+    prcm_commit();
 }
 
 /// The ULDO power source is a temporary power source
