@@ -187,6 +187,12 @@ pub fn release_uldo() {
     regs.vd_ctl.modify(VDControl::ULDO::CLEAR);
 }
 
+pub fn power_down_mcu_voltage_domain() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+    regs.vd_ctl.modify(VDControl::MCU_VD_POWERDOWN::SET);
+
+}
+
 pub enum PowerDomain {
     // Note: when RFC is to be enabled, you are required to use both
     // power domains (i.e enable RFC on both PowerDomain0 and PowerDomain1)
