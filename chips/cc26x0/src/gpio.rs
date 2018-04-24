@@ -100,11 +100,6 @@ impl GPIOPin {
         let regs: &GpioRegisters = unsafe { &*self.regs };
         regs.dout_31_0.get()
     }
-
-    fn disable_output(&self) {
-        let regs: &GpioRegisters = unsafe { &*self.regs };
-        regs.doe.set(regs.doe.get() & !self.pin_mask);
-    }
 }
 
 impl hil::gpio::PinCtl for GPIOPin {

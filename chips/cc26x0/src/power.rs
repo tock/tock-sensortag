@@ -47,6 +47,40 @@ fn vims_disable() {
     vims_ctl.set(0x00000003); // disable VIMS
 }
 
+use kernel;
+
+/// Transition into shutdown - completely
+/// turning of the power to the MCU (not sensors).
+///
+/// Will shutdown afterwards on a WFI instruction.
+pub unsafe fn prepare_shutdown() {
+    aon::AON.shutdown_enable();
+    aon::AON.jtag_set_enabled(false);
+
+    aux::AUX_CTL.power_down();
+    aux::AUX_CTL.disconnect_bus();
+    aon::AON.aux_wakeup(false);
+
+    while aon::AON.aux_is_on() {}
+
+    prcm::force_disable_dma_and_crypto();
+
+    prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
+    prcm::Power::disable_domain(prcm::PowerDomain::RFC);
+    prcm::Power::disable_domain(prcm::PowerDomain::Serial);
+    prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
+    prcm::Power::disable_domain(prcm::PowerDomain::CPU);
+    vims_disable();
+
+    prcm::mcu_power_down();
+
+    rtc::RTC.sync();
+
+    scb::set_sleepdeep();
+
+    kernel::support::wfi();
+}
+
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
     // Enable power down of the MCU
@@ -61,6 +95,8 @@ pub unsafe fn prepare_deep_sleep() {
         osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
         osc::OSC.perform_switch();
     }
+    osc::OSC.clock_source_set(osc::ClockType::LF, osc::LF_RCOSC);
+    while osc::OSC.clock_source_get(osc::ClockType::LF) != osc::LF_RCOSC {}
 
     // We need to setup the recharge algorithm by TI, since this
     // will tweak the variables depending on the power & current in order to successfully
@@ -87,10 +123,8 @@ pub unsafe fn prepare_deep_sleep() {
     // transition into deep sleep (if a debugger is attached, we still won't).
     aon::AON.jtag_set_enabled(false);
 
-    // We need to allow the aux domain to sleep when we enter sleep mode
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+    // We need to allow the aux domain to power down mode
     aux::AUX_CTL.power_down();
-    //aux::AUX_CTL.disconnect_bus();
 
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
@@ -126,7 +160,7 @@ pub unsafe fn prepare_wakeup() {
     rtc::RTC.sync();
 
     // We're ready to allow the auxilliary domain to wake up once it's needed.
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::WakeUp);
+    //aux::AUX_CTL.wakeup_event(aux::WakeupMode::WakeUp);
 
     // If we were using the ULDO power to supply the peripherals, we can safely
     // disable it now - it is unnecessary if it's started.

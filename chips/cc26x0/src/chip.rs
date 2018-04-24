@@ -6,6 +6,8 @@ const X0_RF_CPE1: u32 = 2;
 const X0_RF_CPE0: u32 = 9;
 const X0_RF_CMD_ACK: u32 = 11;
 
+use kernel::hil::gpio::Pin;
+
 use radio;
 use timer;
 use uart;
@@ -100,6 +102,12 @@ impl kernel::Chip for Cc26x0 {
     }
 
     fn sleep(&self) {
+        // Shutdown everything!
+        unsafe {
+            power::prepare_shutdown();
+            support::wfi();
+        }
+
         let sleep_mode: SleepMode = SleepMode::from(unsafe {
             peripherals::M.lowest_sleep_mode()
         });

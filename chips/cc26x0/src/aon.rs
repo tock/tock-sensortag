@@ -30,7 +30,7 @@ struct AonWucRegisters {
     aux_cfg: ReadWrite<u32, AuxCfg::Register>,
     aux_ctl: ReadWrite<u32, AuxCtl::Register>,
     pwr_stat: ReadOnly<u32, PwrStat::Register>,
-    _shutdown: ReadOnly<u32>,
+    shutdown: ReadWrite<u32, Shutdown::Register>,
 
     _reserved0: ReadOnly<u32>,
 
@@ -46,7 +46,7 @@ struct AonWucRegisters {
 struct AonSysctlRegisters {
     pwrtcl: ReadWrite<u32, PwrCtl::Register>,
     resetctl: ReadOnly<u32>,
-    sleepctl: ReadOnly<u32>
+    sleepctl: ReadWrite<u32, SleepCtl::Register>
 }
 
 register_bitfields![
@@ -124,6 +124,16 @@ register_bitfields![
         EXT_REG_MODE OFFSET(1) NUMBITS(1) [],
         // 0 = use GDLO for recharge, 1 = use DCDC for recharge
         DCDC_EN      OFFSET(0) NUMBITS(1) []
+    ],
+    SleepCtl [
+        IO_PAD_SLEEP_DIS OFFSET(0) NUMBITS(1) []
+    ],
+    Shutdown [
+        // Shutdown enable
+        //  Writing 1 forces a shutdown request to be registered and all IO
+        //  values to be latched - in the PAD ring, possibly enabling I/O wakeup.
+        //  A registered shutdown request takes effect the next time power down conditions exist.
+        EN OFFSET(0) NUMBITS(1) []
     ]
 ];
 
@@ -154,7 +164,8 @@ impl Aon {
         regs.aux_wu_sel.set(0x3F3F3F3F);
 
         // Set RTC CH1 as a wakeup source by default
-        regs.mcu_wu_sel.set(0x3F3F3F24);
+        //regs.mcu_wu_sel.set(0x3F3F3F24);
+        regs.mcu_wu_sel.set(0x3F3F3F3F);
 
         // Disable RTC combined event
         regs.rtc_sel.set(0x0000003F);
@@ -181,6 +192,11 @@ impl Aon {
                     + PwrCtl::DCDC_EN::CLEAR
             );
         }
+    }
+
+    pub fn sleep_io_padring(&self) {
+        let regs: &AonSysctlRegisters = unsafe { &*self.aon_sysctl_regs };
+        regs.sleepctl.modify(SleepCtl::IO_PAD_SLEEP_DIS::SET);
     }
 
     pub fn lock_io_pins(&self, lock: bool) {
@@ -234,6 +250,11 @@ impl Aon {
         );
     }
 
+    pub fn mcu_virtual_power_down_disable(&self) {
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        aon_regs.mcu_cfg.modify(McuCfg::VIRT_OFF::SET + McuCfg::FIXED_WU_EN::CLEAR);
+    }
+
     pub fn aux_disable_power_down_clock(&self) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         aon_regs.aux_clk.modify(
@@ -247,5 +268,13 @@ impl Aon {
         aon_regs.ctl0.modify(
             Ctl0::PWR_DWN_DIS::CLEAR
         );
+    }
+
+    pub fn shutdown_enable(&self) {
+        self.jtag_set_enabled(false);
+        self.mcu_power_down_enable();
+
+        let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
+        aon_regs.shutdown.modify(Shutdown::EN::SET);
     }
 }

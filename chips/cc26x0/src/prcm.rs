@@ -169,6 +169,14 @@ pub fn force_disable_dma_and_crypto() {
         SECDMAClockGate::DMA_CLK_EN::CLEAR
             + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
     );
+
+    prcm_commit();
+}
+
+/// Request a power down of the entire MCU region
+pub fn mcu_power_down() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+    regs.vd_ctl.modify(VDControl::MCU_VD_POWERDOWN::SET);
 }
 
 /// The ULDO power source is a temporary power source

@@ -136,6 +136,11 @@ impl UART {
         );
     }
 
+    fn power_and_clock(&self) {
+        unsafe { PM.request_resource(prcm::PowerDomain::Serial as u32); }
+        prcm::Clock::enable_uart_run();
+    }
+
     fn set_baud_rate(&self, baud_rate: u32) {
         // Fractional baud rate divider
         let div = (((MCU_CLOCK * 8) / baud_rate) + 1) / 2;

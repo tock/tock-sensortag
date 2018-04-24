@@ -7,8 +7,8 @@ target remote localhost:3333
 
 file target/thumbv7m-none-eabi/release/sensortag
 
-monitor reset halt
+# monitor reset halt
 
 # Setup GDB for faster downloads
-set remote memory-write-packet-size 1024
-set remote memory-write-packet-size fixed
+# set remote memory-write-packet-size 1024
+# set remote memory-write-packet-size fixed

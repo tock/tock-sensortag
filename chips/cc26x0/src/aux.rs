@@ -8,8 +8,8 @@ use aon;
 struct AuxWucRegisters {
     mod_clk_en0: ReadWrite<u32, ModClkEn0::Register>,
     _pwr_off_req: WriteOnly<u32, PwrOffReq::Register>,
-    pwr_dwn_req: WriteOnly<u32, PwrDwnReq::Register>,
-    _pwr_dwn_ack: ReadOnly<u32>,
+    pwr_dwn_req: ReadWrite<u32, PwrDwnReq::Register>,
+    pwr_dwn_ack: ReadOnly<u32, PwrDwnAck::Register>,
 
     _clk_lf_req: ReadOnly<u32>,
     _clk_lf_ack: ReadOnly<u32>,
@@ -27,7 +27,7 @@ struct AuxWucRegisters {
     _rtc_subsec_inc1: ReadOnly<u32>,
     _rtc_subsec_inc_ctl: ReadOnly<u32>,
 
-    mcu_bus_ctl: WriteOnly<u32, McuBusCtl::Register>,
+    mcu_bus_ctl: ReadWrite<u32, McuBusCtl::Register>,
     _mcu_bus_stat: ReadOnly<u32>,
 
     _aon_ctl_stat: ReadOnly<u32>,
@@ -55,6 +55,9 @@ register_bitfields![
     ],
     PwrDwnReq [
         REQ OFFSET(0) NUMBITS(1) []
+    ],
+    PwrDwnAck [
+        ACK OFFSET(0) NUMBITS(1) []
     ],
     McuBusCtl [
         DISCONNECT_REQ OFFSET(0) NUMBITS(1) []
@@ -124,13 +127,13 @@ impl Aux {
     }
 
     pub fn power_down(&self) {
-        if self.power_status() == WakeupMode::AllowSleep {
-            return
-        }
-
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
+
         // Make a power down request
-        aux_regs.pwr_dwn_req.write(PwrDwnReq::REQ::SET);
+        aux_regs.pwr_dwn_req.modify(PwrDwnReq::REQ::SET);
+        while !aux_regs.pwr_dwn_ack.is_set(PwrDwnAck::ACK) {}
+        aux_regs.pwr_dwn_req.modify(PwrDwnReq::REQ::CLEAR);
+        while aux_regs.pwr_dwn_ack.is_set(PwrDwnAck::ACK) {}
     }
 
     pub fn wakeup_event(&self, mode: WakeupMode) {

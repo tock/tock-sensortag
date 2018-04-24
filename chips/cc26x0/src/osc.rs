@@ -33,6 +33,7 @@ pub enum ClockType {
 */
 pub const HF_RCOSC: u8 = 0x00;
 pub const HF_XOSC: u8 = 0x01;
+pub const LF_RCOSC: u8 = 0x02;
 
 struct DdiRegisters {
     ctl0: ReadWrite<u32, Ctl0::Register>,
