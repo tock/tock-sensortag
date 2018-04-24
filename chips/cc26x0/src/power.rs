@@ -49,11 +49,10 @@ fn vims_disable() {
 
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
-    // Enable power down of the MCU
-    aon::AON.mcu_power_down_enable();
-
     // Use less recharge power by using DCDC
     aon::AON.set_dcdc_enabled(true);
+
+    rtc::RTC.sync();
 
     // Ensure that we're running on the internal oscillator and
     // not the external (in case the radio has been used).
@@ -61,11 +60,8 @@ pub unsafe fn prepare_deep_sleep() {
         osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
         osc::OSC.perform_switch();
     }
-
-    // We need to setup the recharge algorithm by TI, since this
-    // will tweak the variables depending on the power & current in order to successfully
-    // recharge.
-    recharge::before_power_down(0);
+    osc::OSC.clock_source_set(osc::ClockType::LF, 0x2);
+    while osc::OSC.clock_source_get(osc::ClockType::LF) != 0x2 {};
 
     // Force disable dma & crypto
     // This due to that we can not successfully power down the MCU
@@ -80,6 +76,8 @@ pub unsafe fn prepare_deep_sleep() {
     // this will further reduce the power consumption.
     aon::AON.aux_disable_power_down_clock();
 
+    rtc::RTC.sync();
+
     // Set the ram retention to retain SRAM
     aon::AON.mcu_set_ram_retention(true);
 
@@ -87,14 +85,24 @@ pub unsafe fn prepare_deep_sleep() {
     // transition into deep sleep (if a debugger is attached, we still won't).
     aon::AON.jtag_set_enabled(false);
 
+    rtc::RTC.sync();
+
     // We need to allow the aux domain to sleep when we enter sleep mode
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+    rtc::RTC.sync();
+
+    aux::AUX_CTL.disconnect_bus();
+    rtc::RTC.sync();
+    while aon::AON.aux_is_on() {}
+
     aux::AUX_CTL.power_down();
-    //aux::AUX_CTL.disconnect_bus();
+    rtc::RTC.sync();
 
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
     aon::AON.lock_io_pins(true);
+
+    rtc::RTC.sync();
 
     // Disable all domains except Peripherals & Serial
     // The peripheral & serial domain can be powered on during deep sleep,
@@ -107,10 +115,20 @@ pub unsafe fn prepare_deep_sleep() {
     prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
 
-    vims_disable();
+    // We need to setup the recharge algorithm by TI, since this
+    // will tweak the variables depending on the power & current in order to successfully
+    // recharge.
+    recharge::before_power_down(0);
 
     // We need to supply power using the ULDO power supply; which is a low power supply
     prcm::acquire_uldo();
+
+    // Enable power down of the MCU
+    rtc::RTC.sync();
+    aon::AON.mcu_power_down_enable();
+    rtc::RTC.sync();
+
+    vims_disable();
 
     // Sync with the RTC before we are ready to transition into deep sleep
     rtc::RTC.sync();

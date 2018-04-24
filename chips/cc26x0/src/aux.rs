@@ -9,7 +9,7 @@ struct AuxWucRegisters {
     mod_clk_en0: ReadWrite<u32, ModClkEn0::Register>,
     _pwr_off_req: WriteOnly<u32, PwrOffReq::Register>,
     pwr_dwn_req: WriteOnly<u32, PwrDwnReq::Register>,
-    _pwr_dwn_ack: ReadOnly<u32>,
+    pwr_dwn_ack: ReadOnly<u32>,
 
     _clk_lf_req: ReadOnly<u32>,
     _clk_lf_ack: ReadOnly<u32>,
@@ -131,6 +131,10 @@ impl Aux {
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
         // Make a power down request
         aux_regs.pwr_dwn_req.write(PwrDwnReq::REQ::SET);
+        while aux_regs.pwr_dwn_ack.get() != 1 {}
+
+        aux_regs.pwr_dwn_req.write(PwrDwnReq::REQ::CLEAR);
+        while aux_regs.pwr_dwn_ack.get() != 0 {}
     }
 
     pub fn wakeup_event(&self, mode: WakeupMode) {

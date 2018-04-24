@@ -173,6 +173,11 @@ pub fn force_disable_dma_and_crypto() {
     prcm_commit();
 }
 
+pub fn mcu_power_down() {
+    let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+    regs.vd_ctl.modify(VDControl::MCU_VD_POWERDOWN::SET);
+}
+
 /// The ULDO power source is a temporary power source
 /// which could be enable to drive Peripherals in deep sleep.
 pub fn acquire_uldo() {
