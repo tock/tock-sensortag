@@ -6,13 +6,15 @@ Disclaimer
 ----------
 
 -- The debugger was used as power source to not drain the battery. 
-   Using the debugger increases the power consumption with about 100 uA
+   Using the debugger increases the power consumption with about 100 uA.
 
--- All values are +/- 30 uA depending on the contact between the cables and the Sensortag
+-- All values are +/- 30 uA depending on the contact between the cables and the Sensortag.
 
--- The multimeter used isn't the best one, only large changes in energy-consumption will be noticable
+-- The multimeter used isn't the best one, only large changes in energy-consumption will be noticable. 
 
--- Force JTAG & DMA/Crypto clocks to be disabled
+-- GPIO pins were configured to a low-power state before running the tests.
+
+-- We have an offset of about 250 uA from where we should be according to the datasheet. Probably an external sensor that makes life hard for us.
 
 Active                      4.1 mA
 -----------------------------------
@@ -26,9 +28,12 @@ Deep sleep                  2.1 mA
 + VIMS disabled and PD off  1585 uA
 + Power Domains off         1455 uA (RFC, Serial, Peripheral) 
 + uLDO on                   1390 uA 
++ Switch to RCOSC           ~ Same  (Probably already using the RCOSC, otherwise 0.2 uA difference according to datasheet.
+                                     Also needs to be run before AUX power down, current consumption through the roof otherwise)
 + AUX power down            1025 uA
-+ Switch to RCOSC           ~ Same  (Probably already using the RCOSC) (No RTC sync)
-+ DCDC on                   ~ Same  (No RTC sync)
++ DCDC on                   ~ Same 
++ Recharge config           850 uA  (Needs RTC sync or perhaps a delay?)      
++ Turn off dma/crypto/jtag  ~ Same  (Probably already disabled)
++ MCU RAM retention off     ~ Same  
 
-+ Recharge config            
-
++ MCU VD off                Increases from 0.2 mA up to 1.4 mA  (Probably means that we can't enter Shutdown mode properly or that we power on immediately)

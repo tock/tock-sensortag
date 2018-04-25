@@ -49,10 +49,6 @@ fn vims_disable() {
 
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
-    // Enforce DEEP SLEEP conditions
-    prcm::force_disable_dma_and_crypto();
-    aon::AON.jtag_set_enabled(false);
-
     // Step 1
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
 
@@ -97,13 +93,26 @@ pub unsafe fn prepare_deep_sleep() {
     // Step 7
     // Use less recharge power by using DCDC
     aon::AON.set_dcdc_enabled(true);
+    rtc::RTC.sync();
 
     // Step 8
     // We need to setup the recharge algorithm by TI, since this
     // will tweak the variables depending on the power & current in order to successfully
     // recharge.
     recharge::before_power_down(0);
+    rtc::RTC.sync();
 
+    // Step 9
+    prcm::force_disable_dma_and_crypto();
+    aon::AON.jtag_set_enabled(false);
+
+    // Step 10
+    // Set the ram retention to retain SRAM
+    aon::AON.mcu_set_ram_retention(false);
+    rtc::RTC.sync();
+
+    // Step 11
+    prcm::mcu_power_down();
 
     // Sync with the RTC before we are ready to transition into deep sleep
     //rtc::RTC.sync();
