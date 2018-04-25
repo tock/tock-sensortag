@@ -190,7 +190,6 @@ pub fn release_uldo() {
 pub fn mcu_power_down() {
     let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
     regs.vd_ctl.modify(VDControl::MCU_VD_POWERDOWN::SET);
-
 }
 
 pub enum PowerDomain {

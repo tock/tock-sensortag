@@ -253,6 +253,6 @@ impl Aon {
     /// Await a cycle of the AON domain in order
     /// to sync with it.
     pub fn sync(&self) {
-        rtc::RTC.sync();
+        unsafe { rtc::RTC.sync() };
     }
 }
