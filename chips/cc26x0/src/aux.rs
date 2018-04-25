@@ -128,6 +128,17 @@ impl Aux {
             return
         }
 
+        // First off disable any wakeup
+        self.wakeup_event(WakeupMode::AllowSleep);
+        aon::AON.sync();
+
+        // Then disconnect the bus
+        self.disconnect_bus();
+        aon::AON.sync();
+
+        // Wait until the bus has been properly disconnected
+        while aon::AON.aux_is_on() {}
+
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
         // Make a power down request
         aux_regs.pwr_dwn_req.write(PwrDwnReq::REQ::SET);
@@ -135,6 +146,8 @@ impl Aux {
 
         aux_regs.pwr_dwn_req.write(PwrDwnReq::REQ::CLEAR);
         while aux_regs.pwr_dwn_ack.get() != 0 {}
+
+        aon::AON.sync();
     }
 
     pub fn wakeup_event(&self, mode: WakeupMode) {

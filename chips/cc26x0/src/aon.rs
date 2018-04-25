@@ -7,6 +7,7 @@
 
 use kernel::common::VolatileCell;
 use kernel::common::regs::{ReadOnly,ReadWrite};
+use rtc;
 
 #[repr(C)]
 pub struct AonIocRegisters {
@@ -247,5 +248,11 @@ impl Aon {
         aon_regs.ctl0.modify(
             Ctl0::PWR_DWN_DIS::CLEAR
         );
+    }
+
+    /// Await a cycle of the AON domain in order
+    /// to sync with it.
+    pub fn sync(&self) {
+        rtc::RTC.sync();
     }
 }

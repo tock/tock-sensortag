@@ -90,7 +90,6 @@ impl Rtc {
 
     pub fn sync(&self) {
         let regs: &RtcRegisters = unsafe { &*self.regs };
-        regs.sync.set(1);
         regs.sync.get();
     }
 
