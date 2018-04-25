@@ -78,7 +78,18 @@ pub unsafe fn prepare_deep_sleep() {
     rtc::RTC.sync();
 
     // We need to allow the aux domain to sleep when we enter sleep mode
-    aux::AUX_CTL.power_down();
+    //aux::AUX_CTL.power_down();
+    aon::AON.aux_disable_power_down_clock();
+    aon::AON.sync();
+
+    // We need to allow the aux domain to sleep when we enter sleep mode
+    aon::AON.aux_disable_power_down_clock();
+    aon::AON.aux_set_ram_retention(false);
+
+    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+
+    aux::AUX_CTL.power_off();
+    while aon::AON.aux_is_on() {}
 
     // Step 7
     // Use less recharge power by using DCDC
