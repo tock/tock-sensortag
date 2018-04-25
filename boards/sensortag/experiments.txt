@@ -10,7 +10,9 @@ Disclaimer
 
 -- All values are +/- 30 uA depending on the contact between the cables and the Sensortag
 
--- The multimeter used isn't the best one, only large changes in energy-consumption will be noticable 
+-- The multimeter used isn't the best one, only large changes in energy-consumption will be noticable
+
+-- Force JTAG & DMA/Crypto clocks to be disabled
 
 Active                      4.1 mA
 -----------------------------------

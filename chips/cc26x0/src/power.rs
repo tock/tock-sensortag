@@ -49,6 +49,10 @@ fn vims_disable() {
 
 /// Transition into deep sleep
 pub unsafe fn prepare_deep_sleep() {
+    // Enforce DEEP SLEEP conditions
+    prcm::force_disable_dma_and_crypto();
+    aon::AON.jtag_set_enabled(false);
+
     // Step 1
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
 
@@ -78,7 +82,6 @@ pub unsafe fn prepare_deep_sleep() {
     rtc::RTC.sync();
 
     // We need to allow the aux domain to sleep when we enter sleep mode
-    //aux::AUX_CTL.power_down();
     aon::AON.aux_disable_power_down_clock();
     aon::AON.sync();
 
@@ -101,18 +104,27 @@ pub unsafe fn prepare_deep_sleep() {
     // recharge.
     recharge::before_power_down(0);
 
-    // Final step
-    scb::set_sleepdeep();
 
-    /*
     // Sync with the RTC before we are ready to transition into deep sleep
     //rtc::RTC.sync();
 
+    /*aon::AON.mcu_power_down_enable();
     // Use less recharge power by using DCDC
     aon::AON.set_dcdc_enabled(true);
 
+    if osc::OSC.clock_source_get(osc::ClockType::HF) != osc::HF_RCOSC {
+        osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
+        osc::OSC.perform_switch();
+    }
+    osc::OSC.clock_source_set(osc::ClockType::LF, 0x2);
+    while osc::OSC.clock_source_get(osc::ClockType::LF) != 0x2 {};
+
     rtc::RTC.sync();
 
+    // We need to setup the recharge algorithm by TI, since this
+    // will tweak the variables depending on the power & current in order to successfully
+    // recharge.
+    recharge::before_power_down(0);
 
     // Force disable dma & crypto
     // This due to that we can not successfully power down the MCU
@@ -139,15 +151,13 @@ pub unsafe fn prepare_deep_sleep() {
     rtc::RTC.sync();
 
     // We need to allow the aux domain to sleep when we enter sleep mode
+    aon::AON.aux_disable_power_down_clock();
+    aon::AON.aux_set_ram_retention(false);
+
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
-    rtc::RTC.sync();
 
-    aux::AUX_CTL.disconnect_bus();
-    rtc::RTC.sync();
+    aux::AUX_CTL.power_off();
     while aon::AON.aux_is_on() {}
-
-    aux::AUX_CTL.power_down();
-    rtc::RTC.sync();
 
     // In order to preserve the pins we need to apply an
     // io latch which will freeze the states of each pin during sleep modes
@@ -166,16 +176,13 @@ pub unsafe fn prepare_deep_sleep() {
     prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
 
-
     // We need to supply power using the ULDO power supply; which is a low power supply
     prcm::acquire_uldo();
 
-    // Enable power down of the MCU
-    rtc::RTC.sync();
-    aon::AON.mcu_power_down_enable();
-    rtc::RTC.sync();
+    aon::AON.sync();*/
 
-    */
+    // Final step
+    scb::set_sleepdeep();
 }
 
 /// Perform necessary setup once we've woken up from deep sleep
