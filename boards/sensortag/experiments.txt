@@ -1,0 +1,32 @@
+###################
+Energy measurements 
+###################
+
+Disclaimer
+----------
+
+-- The debugger was used as power source to not drain the battery. 
+   Using the debugger increases the power consumption with about 100 uA
+
+-- All values are +/- 30 uA depending on the contact between the cables and the Sensortag
+
+-- The multimeter used isn't the best one, only large changes in energy-consumption will be noticable 
+
+Active                      4.1 mA
+-----------------------------------
+
+Sleep                       2.6 mA
+-----------------------------------
+
+Deep sleep                  2.1 mA   
+-----------------------------------
++ CPU domain off            1.65 mA (~1590 uA)
++ VIMS disabled and PD off  1585 uA
++ Power Domains off         1455 uA (RFC, Serial, Peripheral) 
++ uLDO on                   1390 uA 
++ AUX power down            1025 uA
++ Switch to RCOSC           ~ Same  (Probably already using the RCOSC) (No RTC sync)
++ DCDC on                   ~ Same  (No RTC sync)
+
++ Recharge config            
+
