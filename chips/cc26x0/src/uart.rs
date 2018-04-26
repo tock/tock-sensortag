@@ -14,7 +14,7 @@ pub const MCU_CLOCK: u32 = 48_000_000;
 
 #[repr(C)]
 struct Registers {
-    dr: ReadWrite<u32>,
+    dr: ReadWrite<u32, Data::Register>,
     rsr_ecr: ReadWrite<u32>,
     _reserved0: [u8; 0x10],
     fr: ReadOnly<u32, Flags::Register>,
@@ -33,6 +33,9 @@ struct Registers {
 
 register_bitfields![
     u32,
+    Data [
+        DATA OFFSET(0) NUMBITS(8)
+    ],
     Control [
         UART_ENABLE OFFSET(0) NUMBITS(1) [],
         TX_ENABLE OFFSET(8) NUMBITS(1) [],
@@ -54,6 +57,7 @@ register_bitfields![
         DIVISOR OFFSET(0) NUMBITS(6) []
     ],
     Flags [
+        RX_FIFO_EMPTY OFFSET(4) NUMBITS(1) [],
         TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
     ],
     Interrupts [
@@ -185,9 +189,23 @@ impl UART {
         regs.dr.set(c as u32);
     }
 
+    pub fn read_byte(&self) -> u8 {
+        // Get byte from RX FIFO
+
+        while !self.rx_ready() {}
+        let regs = unsafe { &*self.regs };
+        regs.dr.read(Data::DATA) as u8
+    }
+
+
     pub fn tx_ready(&self) -> bool {
         let regs = unsafe { &*self.regs };
         !regs.fr.is_set(Flags::TX_FIFO_FULL)
+    }
+
+    pub fn rx_ready(&self) -> bool {
+        let regs = unsafe { &*self.regs };
+        !regs.fr.is_set(Flags::RX_FIFO_EMPTY)
     }
 }
 
@@ -214,6 +232,15 @@ impl kernel::hil::uart::UART for UART {
         });
     }
 
-    #[allow(unused)]
-    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
+    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {
+        if rx_len == 0 { return; }
+        
+        for i in 0..rx_len {
+            rx_buffer[i] = self.read_byte();
+        }
+    
+        self.client.get().map(move |client| {
+            client.receive_complete(rx_buffer, rx_len, kernel::hil::uart::Error::CommandComplete);
+        });
+    }
 }

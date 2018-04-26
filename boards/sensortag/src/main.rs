@@ -24,7 +24,7 @@ const FAULT_RESPONSE: kernel::process::FaultResponse = kernel::process::FaultRes
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 2;
 //
-static mut PROCESSES: [Option<kernel::Process<'static>>; NUM_PROCS] = [None, None];
+static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS] = [None, None];
 
 #[link_section = ".app_memory"]
 static mut APP_MEMORY: [u8; 10240] = [0; 10240];
@@ -82,11 +82,11 @@ pub unsafe fn reset_handler() {
         ); 2],
         [
             (
-                &gpio::PORT[10],
+                &gpio::PORT[6],
                 capsules::led::ActivationMode::ActiveHigh
             ), // Red
             (
-                &gpio::PORT[15],
+                &gpio::PORT[7],
                 capsules::led::ActivationMode::ActiveHigh
             ) // Green
         ]
@@ -118,13 +118,14 @@ pub unsafe fn reset_handler() {
         btn.set_client(button);
     }
 
-    uart::UART0.set_pins(29, 28);
+    uart::UART0.set_pins(3, 2);
     let console = static_init!(
         capsules::console::Console<uart::UART>,
         capsules::console::Console::new(
             &uart::UART0,
             115200,
             &mut capsules::console::WRITE_BUF,
+            &mut capsules::console::READ_BUF,
             kernel::Grant::create()
         )
     );
@@ -143,14 +144,14 @@ pub unsafe fn reset_handler() {
             &gpio::PORT[2],
             &gpio::PORT[3],
             &gpio::PORT[5],
-            &gpio::PORT[6],
-            &gpio::PORT[7],
             &gpio::PORT[8],
             &gpio::PORT[9],
+            &gpio::PORT[10],
             &gpio::PORT[11],
             &gpio::PORT[12],
             &gpio::PORT[13],
             &gpio::PORT[14],
+            &gpio::PORT[15],
             &gpio::PORT[16],
             &gpio::PORT[17],
             &gpio::PORT[18],

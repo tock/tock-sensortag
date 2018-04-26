@@ -10,6 +10,7 @@ use radio;
 use timer;
 use uart;
 use kernel;
+use kernel::support;
 use rtc;
 
 pub struct Cc26x0 {
@@ -75,5 +76,11 @@ impl kernel::Chip for Cc26x0 {
 
     fn has_pending_interrupts(&self) -> bool {
         unsafe { nvic::has_pending() }
+    }
+
+    fn sleep(&self) {
+        unsafe {
+            support::wfi();
+        }
     }
 }
