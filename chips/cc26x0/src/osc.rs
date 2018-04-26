@@ -34,6 +34,9 @@ pub enum ClockType {
 pub const HF_RCOSC: u8 = 0x00;
 pub const HF_XOSC: u8 = 0x01;
 
+pub const LF_RCOSC: u8 = 0x02;
+pub const LF_XOSC: u8 = 0x03;
+
 struct DdiRegisters {
     ctl0: ReadWrite<u32, Ctl0::Register>,
     _ctl1: ReadOnly<u32>,
@@ -155,6 +158,26 @@ impl Oscillator {
         let regs: &DdiRegisters = unsafe { &*self.r_regs };
         let wr_regs: &DdiRegisters = unsafe { &*self.wr_regs };
         wr_regs.ctl0.modify(Ctl0::XTAL_IS_24M::SET);
+    }
+
+    /// Disable the LF clock qualifiers
+    ///     The LF clock qualifiers can disrupt sleep procedures,
+    ///     so it's safest to just disable them.
+    ///
+    /// *Note*: this may be blocking until the LF source has been
+    ///         stabilized to RCOSC
+    pub fn disable_lf_clock_qualifiers(&self) {
+        // Wait until the clock source has been set & stabilised
+        while self.clock_source_get(ClockType::LF) != LF_RCOSC { }
+
+        let regs: &DdiRegisters = unsafe { &*self.r_regs };
+
+        // Disable the LF clock qualifiers as they are known to prevent
+        // standby modes (deep sleep w/o MCU power).
+        regs.ctl0.modify(
+            Ctl0::BYPASS_XOSC_LF_CLK_QUAL::SET
+                + Ctl0::BYPASS_RCOSC_LF_CLK_QUAL::SET
+        );
     }
 
     pub fn request_switch_to_hf_xosc(&self) {

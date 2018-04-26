@@ -72,7 +72,7 @@ pub unsafe fn prepare_deep_sleep() {
         osc::OSC.perform_switch();
     }
     osc::OSC.clock_source_set(osc::ClockType::LF, 0x2);
-    while osc::OSC.clock_source_get(osc::ClockType::LF) != 0x2 {};
+    osc::OSC.disable_lf_clock_qualifiers();
 
     // Step 6 (Should really be a function in the aux module)
     rtc::RTC.sync();
