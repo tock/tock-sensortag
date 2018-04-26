@@ -59,6 +59,13 @@ pub unsafe fn power_on_gpio() {
     PORT[MIC_POWER].clear();
 }
 
+pub unsafe fn diable_all_pins() {
+    for pin in PORT.pins.iter() {
+        pin.disable();
+    }
+
+}
+
 pub struct GPIOPin {
     regs: *const GpioRegisters,
     pin: usize,
@@ -101,7 +108,10 @@ impl GPIOPin {
         regs.dout_31_0.get()
     }
 
-    fn disable_output(&self) {
+    pub fn conf_as_input(&self) {
+        self.enable_gpio();
+        ioc::IOCFG[self.pin].enable_input();
+        // Disable data output
         let regs: &GpioRegisters = unsafe { &*self.regs };
         regs.doe.set(regs.doe.get() & !self.pin_mask);
     }
@@ -124,11 +134,7 @@ impl hil::gpio::Pin for GPIOPin {
     }
 
     fn make_input(&self) {
-        self.enable_gpio();
-        ioc::IOCFG[self.pin].enable_input();
-        // Disable data output
-        let regs: &GpioRegisters = unsafe { &*self.regs };
-        regs.doe.set(regs.doe.get() & !self.pin_mask);
+        self.conf_as_input();
     }
 
     fn disable(&self) {
