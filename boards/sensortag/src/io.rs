@@ -55,7 +55,6 @@ pub unsafe extern "C" fn rust_begin_unwind(
     _file: &'static str,
     _line: usize,
 ) -> ! {
-
     let writer = &mut WRITER;
     let _ = writer.write_fmt(format_args!(
         "\r\nKernel panic at {}:{}:\r\n\t\"",

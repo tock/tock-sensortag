@@ -31,13 +31,17 @@ impl HDC {
         // Write config to peripheral
         buf[0] = ((HDC_CONFIG & 0xFF00) >> 8) as u8;
         buf[1] = (HDC_CONFIG & 0xFF) as u8;
-        self.sensor.get().write_to_reg(HDC_CONF_REG as u8, &mut buf, 2);
+        self.sensor
+            .get()
+            .write_to_reg(HDC_CONF_REG as u8, &mut buf, 2);
 
         // Start measurement by selecting temperature register
         self.sensor.get().write_reg_address(HDC_TEMP_REG as u8);
 
         // Delay to make sure the value is ready when reading
-        for _ in 0..0xFFFFFF { asm!("NOP"); }
+        for _ in 0..0xFFFFFF {
+            asm!("NOP");
+        }
 
         // Read the temperature
         self.sensor.get().read(&mut buf, 2);

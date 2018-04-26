@@ -12,8 +12,8 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::{aon,trng};
-use cc26x0::{radio,rtc,uart,gpio};
+use cc26xx::{aon, trng};
+use cc26x0::{gpio, radio, rtc, uart};
 
 #[macro_use]
 pub mod io;
@@ -76,19 +76,10 @@ pub unsafe fn reset_handler() {
 
     // LEDs
     let led_pins = static_init!(
-        [(
-            &'static gpio::GPIOPin,
-            capsules::led::ActivationMode
-        ); 2],
+        [(&'static gpio::GPIOPin, capsules::led::ActivationMode); 2],
         [
-            (
-                &gpio::PORT[6],
-                capsules::led::ActivationMode::ActiveHigh
-            ), // Red
-            (
-                &gpio::PORT[7],
-                capsules::led::ActivationMode::ActiveHigh
-            ) // Green
+            (&gpio::PORT[6], capsules::led::ActivationMode::ActiveHigh), // Red
+            (&gpio::PORT[7], capsules::led::ActivationMode::ActiveHigh)  // Green
         ]
     );
     let led = static_init!(
@@ -100,14 +91,8 @@ pub unsafe fn reset_handler() {
     let button_pins = static_init!(
         [(&'static gpio::GPIOPin, capsules::button::GpioMode); 2],
         [
-            (
-                &gpio::PORT[0],
-                capsules::button::GpioMode::LowWhenPressed
-            ), // Button 2
-            (
-                &gpio::PORT[4],
-                capsules::button::GpioMode::LowWhenPressed
-            ) // Button 1
+            (&gpio::PORT[0], capsules::button::GpioMode::LowWhenPressed), // Button 2
+            (&gpio::PORT[4], capsules::button::GpioMode::LowWhenPressed)  // Button 1
         ]
     );
     let button = static_init!(
