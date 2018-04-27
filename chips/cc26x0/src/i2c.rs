@@ -84,7 +84,7 @@ impl I2C {
 
     pub fn wakeup(&self) {
         prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
+        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) {}
         prcm::Clock::enable_i2c();
 
         self.configure(true);
@@ -99,7 +99,11 @@ impl I2C {
         self.master_enable();
 
         let freq;
-        if fast { freq = 400_000; } else { freq = 100_000; }
+        if fast {
+            freq = 400_000;
+        } else {
+            freq = 100_000;
+        }
 
         // Compute SCL (serial clock) period
         let tpr = ((MCU_CLOCK + (2 * 10 * freq) - 1) / (2 * 10 * freq)) - 1;
@@ -125,10 +129,14 @@ impl I2C {
         self.set_master_slave_address(self.slave_addr.get(), false);
         self.master_put_data(data);
 
-        if !self.busy_wait_master_bus() { return false; }
+        if !self.busy_wait_master_bus() {
+            return false;
+        }
 
         self.master_control(I2C_MASTER_CMD_SINGLE_SEND);
-        if !self.busy_wait_master() { return false; }
+        if !self.busy_wait_master() {
+            return false;
+        }
 
         self.status()
     }
@@ -165,7 +173,7 @@ impl I2C {
         success
     }
 
-    pub fn write(&self, data: & [u8], len: u8) -> bool {
+    pub fn write(&self, data: &[u8], len: u8) -> bool {
         self.set_master_slave_address(self.slave_addr.get(), false);
 
         self.master_put_data(data[0]);
@@ -177,7 +185,9 @@ impl I2C {
         let mut success = self.status();
 
         for i in 1..len {
-            if !success { break; }
+            if !success {
+                break;
+            }
             self.master_put_data(data[i as usize]);
             if i < len - 1 {
                 self.master_control(I2C_MASTER_CMD_BURST_SEND_CONT);
@@ -208,7 +218,9 @@ impl I2C {
         let mut success = self.status();
 
         for i in 1..write_len {
-            if !success { break; }
+            if !success {
+                break;
+            }
 
             self.master_put_data(data[i as usize]);
 
@@ -217,7 +229,9 @@ impl I2C {
             success = self.status();
         }
 
-        if !success { return false; }
+        if !success {
+            return false;
+        }
 
         self.set_master_slave_address(self.slave_addr.get(), true);
 
@@ -345,7 +359,7 @@ impl I2C {
             self.wakeup();
         }
 
-        let interface= new_interface as u8;
+        let interface = new_interface as u8;
         if interface != self.interface.get() as u8 {
             self.interface.set(interface);
 
@@ -358,18 +372,16 @@ impl I2C {
                     gpio::PORT[BOARD_IO_SDA_HP].make_input();
                     gpio::PORT[BOARD_IO_SCL_HP].make_input();
                 }
-            }
-                else if interface == I2cInterface::Interface1 as u8 {
-                    unsafe {
-                        ioc::IOCFG[BOARD_IO_SDA_HP].enable_i2c_sda();
-                        ioc::IOCFG[BOARD_IO_SCL_HP].enable_i2c_scl();
-                        gpio::PORT[BOARD_IO_SDA].make_input();
-                        gpio::PORT[BOARD_IO_SCL].make_input();
-                    }
+            } else if interface == I2cInterface::Interface1 as u8 {
+                unsafe {
+                    ioc::IOCFG[BOARD_IO_SDA_HP].enable_i2c_sda();
+                    ioc::IOCFG[BOARD_IO_SCL_HP].enable_i2c_scl();
+                    gpio::PORT[BOARD_IO_SDA].make_input();
+                    gpio::PORT[BOARD_IO_SCL].make_input();
                 }
+            }
 
             self.configure(true);
         }
     }
-
 }

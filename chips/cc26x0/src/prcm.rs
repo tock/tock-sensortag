@@ -143,11 +143,11 @@ impl Power {
             }
             PowerDomain::Serial => {
                 regs.pd_ctl0.modify(PowerDomain0::SERIAL_ON::SET);
-            },
+            }
             PowerDomain::RFC => {
                 regs.pd_ctl0.modify(PowerDomain0::RFC_ON::SET);
                 regs.pd_ctl1.modify(PowerDomain1::RFC_ON::SET);
-            },
+            }
             _ => {
                 panic!("Tried to turn on a power domain not yet specified!");
             }
@@ -161,8 +161,8 @@ impl Power {
             PowerDomain::Serial => regs.pd_stat0_serial.is_set(PowerDomainSingle::ON),
             PowerDomain::RFC => {
                 regs.pd_stat1.is_set(PowerDomainStatus1::RFC_ON)
-                && regs.pd_stat0.is_set(PowerDomainStatus0::RFC_ON)
-            },
+                    && regs.pd_stat0.is_set(PowerDomainStatus0::RFC_ON)
+            }
             _ => false,
         }
     }
@@ -191,9 +191,12 @@ impl Clock {
 
     pub fn enable_trng() {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
-        regs.sec_dma_clk_run.write(SECDMAClockGate::TRNG_CLK_EN::SET);
-        regs.sec_dma_clk_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
-        regs.sec_dma_clk_deep_sleep.write(SECDMAClockGate::TRNG_CLK_EN::SET);
+        regs.sec_dma_clk_run
+            .write(SECDMAClockGate::TRNG_CLK_EN::SET);
+        regs.sec_dma_clk_sleep
+            .write(SECDMAClockGate::TRNG_CLK_EN::SET);
+        regs.sec_dma_clk_deep_sleep
+            .write(SECDMAClockGate::TRNG_CLK_EN::SET);
 
         prcm_commit();
     }

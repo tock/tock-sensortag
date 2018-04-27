@@ -38,8 +38,6 @@ pub enum DriveStrength {
     Min = 0x100,
 }
 
-
-
 #[repr(C)]
 pub struct IocRegisters {
     iocfg: [ReadWrite<u32, IoConfiguration::Register>; 32],
@@ -146,8 +144,7 @@ impl IocfgPin {
 
         if enable {
             pin_ioc.set(pin_ioc.get() | IOC_HYST_ENABLE);
-        }
-        else {
+        } else {
             pin_ioc.set(pin_ioc.get() & !IOC_HYST_ENABLE);
         }
     }

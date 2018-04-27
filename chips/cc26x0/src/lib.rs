@@ -2,11 +2,11 @@
 #![no_std]
 #![crate_name = "cc26x0"]
 #![crate_type = "rlib"]
+extern crate cc26xx;
 extern crate cortexm3;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate kernel;
-extern crate cc26xx;
 
 #[macro_use]
 extern crate bitfield;

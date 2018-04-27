@@ -85,7 +85,7 @@ impl Aux {
         match clock {
             AuxClock::OscillatorControl => {
                 aux_regs.mod_clk_en0.set(aux_regs.mod_clk_en0.get() | 0x40);
-            },
+            }
             AuxClock::Semaphores => {
                 aux_regs.mod_clk_en0.set(aux_regs.mod_clk_en0.get() | 0x1);
             }
@@ -95,24 +95,20 @@ impl Aux {
     pub fn clock_is_active(&self, clock: AuxClock) -> bool {
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
         match clock {
-            AuxClock::OscillatorControl => {
-                (aux_regs.mod_clk_en0.get() & 0x40) != 0
-            },
-            AuxClock::Semaphores => {
-                (aux_regs.mod_clk_en0.get() & 0x1) != 0
-            }
+            AuxClock::OscillatorControl => (aux_regs.mod_clk_en0.get() & 0x40) != 0,
+            AuxClock::Semaphores => (aux_regs.mod_clk_en0.get() & 0x1) != 0,
         }
     }
 
     fn power_up(&self) {
         if self.power_status() == WakeupMode::WakeUp {
-            return
+            return;
         }
 
         // Force the AUX to wake up
         self.wakeup_event(WakeupMode::WakeUp);
         // Wait for it to power up
-        while self.power_status() != WakeupMode::WakeUp { }
+        while self.power_status() != WakeupMode::WakeUp {}
     }
 
     #[allow(unused)]
@@ -122,7 +118,9 @@ impl Aux {
 
         // Disable the clock
         const AUX_CLK_POWER_DOWN_SRC: u32 = 0x00001800;
-        aon_regs.aux_clk.set(aon_regs.aux_clk.get() & !AUX_CLK_POWER_DOWN_SRC);
+        aon_regs
+            .aux_clk
+            .set(aon_regs.aux_clk.get() & !AUX_CLK_POWER_DOWN_SRC);
 
         // Disable SRAM retention of the aux
         aon_regs.aux_cfg.set(0);
@@ -133,14 +131,14 @@ impl Aux {
         aux_regs.pwr_off_req.set(1);
         aux_regs.mcu_bus_ctl.set(1);
 
-        while self.power_status() != WakeupMode::AllowSleep { }
+        while self.power_status() != WakeupMode::AllowSleep {}
     }
 
     fn wakeup_event(&self, mode: WakeupMode) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_regs };
         match mode {
             WakeupMode::AllowSleep => aon_regs.aux_ctl.set(0),
-            WakeupMode::WakeUp => aon_regs.aux_ctl.set(1)
+            WakeupMode::WakeUp => aon_regs.aux_ctl.set(1),
         }
     }
 

@@ -104,7 +104,7 @@ pub unsafe fn reset_handler() {
     }
 
     uart::UART0.set_pins(29, 28);
-    
+
     let console = static_init!(
         capsules::console::Console<uart::UART>,
         capsules::console::Console::new(

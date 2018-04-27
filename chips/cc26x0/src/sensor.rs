@@ -10,10 +10,7 @@ pub struct Sensor {
 
 impl Sensor {
     pub const fn new(interface: i2c::I2cInterface, address: u8) -> Sensor {
-        Sensor {
-            interface,
-            address,
-        }
+        Sensor { interface, address }
     }
 
     pub unsafe fn select(&self) {
@@ -28,7 +25,7 @@ impl Sensor {
         i2c::I2C0.read(buf, len)
     }
 
-    pub unsafe fn write(&self, buf: & [u8], len: u8) -> bool {
+    pub unsafe fn write(&self, buf: &[u8], len: u8) -> bool {
         i2c::I2C0.write(buf, len)
     }
 
@@ -53,5 +50,4 @@ impl Sensor {
     pub unsafe fn write_reg_address(&self, addr: u8) -> bool {
         i2c::I2C0.write_single(addr)
     }
-
 }
