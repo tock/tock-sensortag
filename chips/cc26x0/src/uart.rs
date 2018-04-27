@@ -14,7 +14,7 @@ pub const MCU_CLOCK: u32 = 48_000_000;
 
 #[repr(C)]
 struct Registers {
-    dr: ReadWrite<u32>,
+    dr: ReadWrite<u32, Data::Register>,
     rsr_ecr: ReadWrite<u32>,
     _reserved0: [u8; 0x10],
     fr: ReadOnly<u32, Flags::Register>,
@@ -33,6 +33,9 @@ struct Registers {
 
 register_bitfields![
     u32,
+    Data [
+        DATA OFFSET(0) NUMBITS(8)
+    ],
     Control [
         UART_ENABLE OFFSET(0) NUMBITS(1) [],
         TX_ENABLE OFFSET(8) NUMBITS(1) [],
@@ -54,6 +57,7 @@ register_bitfields![
         DIVISOR OFFSET(0) NUMBITS(6) []
     ],
     Flags [
+        RX_FIFO_EMPTY OFFSET(4) NUMBITS(1) [],
         TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
     ],
     Interrupts [
@@ -88,19 +92,19 @@ impl UART {
     pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
         let tx_pin = match self.tx_pin.get() {
             Some(pin) => pin,
-            None => panic!("Tx pin not configured for UART")
+            None => panic!("Tx pin not configured for UART"),
         };
 
         let rx_pin = match self.rx_pin.get() {
             Some(pin) => pin,
-            None => panic!("Rx pin not configured for UART")
+            None => panic!("Rx pin not configured for UART"),
         };
 
         unsafe {
             /*
-            * Make sure the TX pin is output/high before assigning it to UART control
-            * to avoid falling edge glitches
-            */
+             * Make sure the TX pin is output/high before assigning it to UART control
+             * to avoid falling edge glitches
+             */
             gpio::PORT[tx_pin as usize].make_output();
             gpio::PORT[tx_pin as usize].set();
 
@@ -121,15 +125,13 @@ impl UART {
         self.fifo_enable();
 
         // Enable UART, RX and TX
-        regs.ctl.write(Control::UART_ENABLE::SET
-            + Control::RX_ENABLE::SET
-            + Control::TX_ENABLE::SET
-        );
+        regs.ctl
+            .write(Control::UART_ENABLE::SET + Control::RX_ENABLE::SET + Control::TX_ENABLE::SET);
     }
 
     fn power_and_clock(&self) {
         prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) { };
+        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) {}
         prcm::Clock::enable_uart_run();
     }
 
@@ -155,9 +157,9 @@ impl UART {
     pub fn disable(&self) {
         self.fifo_disable();
         let regs = unsafe { &*self.regs };
-        regs.ctl.modify(Control::UART_ENABLE::CLEAR
-            + Control::TX_ENABLE::CLEAR
-            + Control::RX_ENABLE::CLEAR);
+        regs.ctl.modify(
+            Control::UART_ENABLE::CLEAR + Control::TX_ENABLE::CLEAR + Control::RX_ENABLE::CLEAR,
+        );
     }
 
     pub fn disable_interrupts(&self) {
@@ -185,9 +187,22 @@ impl UART {
         regs.dr.set(c as u32);
     }
 
+    pub fn read_byte(&self) -> u8 {
+        // Get byte from RX FIFO
+
+        while !self.rx_ready() {}
+        let regs = unsafe { &*self.regs };
+        regs.dr.read(Data::DATA) as u8
+    }
+
     pub fn tx_ready(&self) -> bool {
         let regs = unsafe { &*self.regs };
         !regs.fr.is_set(Flags::TX_FIFO_FULL)
+    }
+
+    pub fn rx_ready(&self) -> bool {
+        let regs = unsafe { &*self.regs };
+        !regs.fr.is_set(Flags::RX_FIFO_EMPTY)
     }
 }
 
@@ -203,7 +218,9 @@ impl kernel::hil::uart::UART for UART {
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
-        if tx_len == 0 { return; }
+        if tx_len == 0 {
+            return;
+        }
 
         for i in 0..tx_len {
             self.send_byte(tx_data[i]);
@@ -214,6 +231,17 @@ impl kernel::hil::uart::UART for UART {
         });
     }
 
-    #[allow(unused)]
-    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
+    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {
+        if rx_len == 0 {
+            return;
+        }
+
+        for i in 0..rx_len {
+            rx_buffer[i] = self.read_byte();
+        }
+
+        self.client.get().map(move |client| {
+            client.receive_complete(rx_buffer, rx_len, kernel::hil::uart::Error::CommandComplete);
+        });
+    }
 }

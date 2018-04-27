@@ -1,6 +1,8 @@
 use cortexm3::{self, nvic};
 use cc26xx::gpio;
 use cc26xx::peripheral_interrupts::*;
+use kernel::support;
+
 
 const X0_RF_CPE1: u32 = 2;
 const X0_RF_CPE0: u32 = 9;
@@ -75,5 +77,13 @@ impl kernel::Chip for Cc26x0 {
 
     fn has_pending_interrupts(&self) -> bool {
         unsafe { nvic::has_pending() }
+    }
+
+
+
+    fn sleep(&self) {
+        unsafe {
+            support::wfi();
+        }
     }
 }

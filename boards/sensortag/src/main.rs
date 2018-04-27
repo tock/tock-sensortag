@@ -12,8 +12,8 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::{aon,trng};
-use cc26x0::{radio,rtc,uart,gpio};
+use cc26xx::{aon, trng};
+use cc26x0::{gpio, radio, rtc, uart};
 
 #[macro_use]
 pub mod io;
@@ -24,7 +24,7 @@ const FAULT_RESPONSE: kernel::process::FaultResponse = kernel::process::FaultRes
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 2;
 //
-static mut PROCESSES: [Option<kernel::Process<'static>>; NUM_PROCS] = [None, None];
+static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS] = [None, None];
 
 #[link_section = ".app_memory"]
 static mut APP_MEMORY: [u8; 10240] = [0; 10240];
@@ -76,19 +76,10 @@ pub unsafe fn reset_handler() {
 
     // LEDs
     let led_pins = static_init!(
-        [(
-            &'static gpio::GPIOPin,
-            capsules::led::ActivationMode
-        ); 2],
+        [(&'static gpio::GPIOPin, capsules::led::ActivationMode); 2],
         [
-            (
-                &gpio::PORT[10],
-                capsules::led::ActivationMode::ActiveHigh
-            ), // Red
-            (
-                &gpio::PORT[15],
-                capsules::led::ActivationMode::ActiveHigh
-            ) // Green
+            (&gpio::PORT[10], capsules::led::ActivationMode::ActiveHigh), // Red
+            (&gpio::PORT[15], capsules::led::ActivationMode::ActiveHigh)  // Green
         ]
     );
     let led = static_init!(
@@ -100,14 +91,8 @@ pub unsafe fn reset_handler() {
     let button_pins = static_init!(
         [(&'static gpio::GPIOPin, capsules::button::GpioMode); 2],
         [
-            (
-                &gpio::PORT[0],
-                capsules::button::GpioMode::LowWhenPressed
-            ), // Button 2
-            (
-                &gpio::PORT[4],
-                capsules::button::GpioMode::LowWhenPressed
-            ) // Button 1
+            (&gpio::PORT[0], capsules::button::GpioMode::LowWhenPressed), // Button 2
+            (&gpio::PORT[4], capsules::button::GpioMode::LowWhenPressed)  // Button 1
         ]
     );
     let button = static_init!(
@@ -119,12 +104,14 @@ pub unsafe fn reset_handler() {
     }
 
     uart::UART0.set_pins(29, 28);
+    
     let console = static_init!(
         capsules::console::Console<uart::UART>,
         capsules::console::Console::new(
             &uart::UART0,
             115200,
             &mut capsules::console::WRITE_BUF,
+            &mut capsules::console::READ_BUF,
             kernel::Grant::create()
         )
     );
