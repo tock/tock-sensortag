@@ -27,7 +27,10 @@ const NUM_PROCS: usize = 2;
 static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS] = [None, None];
 
 #[link_section = ".app_memory"]
-static mut APP_MEMORY: [u8; 10240] = [0; 10240];
+static mut APP_MEMORY: [u8; 11264] = [0; 11264];
+
+#[link_section = ".dma_control_table"]
+static DMA_CFG: [u8; 1024] = [0; 1024];
 
 pub struct Platform {
     ble_radio: &'static capsules::ble_advertising_driver::BLE<
@@ -232,6 +235,7 @@ pub unsafe fn reset_handler() {
     let mut chip = cc26x0::chip::Cc26x0::new();
 
     debug!("Initialization complete. Entering main loop\r");
+    
     extern "C" {
         /// Beginning of the ROM region containing app images.
         static _sapps: u8;
