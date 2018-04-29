@@ -11,6 +11,7 @@ use radio;
 use timer;
 use uart;
 use kernel;
+use kernel::support;
 use rtc;
 
 pub struct Cc26x0 {

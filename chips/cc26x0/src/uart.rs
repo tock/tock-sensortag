@@ -28,7 +28,7 @@ struct Registers {
     ris: ReadOnly<u32, Interrupts::Register>,
     mis: ReadOnly<u32, Interrupts::Register>,
     icr: WriteOnly<u32, Interrupts::Register>,
-    dmactl: ReadWrite<u32>,
+    dmactl: ReadWrite<u32, DMACtl::Register>
 }
 
 register_bitfields![
@@ -62,12 +62,21 @@ register_bitfields![
     ],
     Interrupts [
         ALL_INTERRUPTS OFFSET(0) NUMBITS(12) []
+    ],
+    DMACtl [ 
+        DMAONERR OFFSET (2) NUMBITS(1) [],
+        TXDMAE OFFSET(1) NUMBITS(1) [],
+        RXDMAE OFFSET(0) NUMBITS(1) []
     ]
 ];
 
 pub struct UART {
     regs: *const Registers,
     client: Cell<Option<&'static uart::Client>>,
+    tx_buffer: kernel::common::take_cell::TakeCell<'static, [u8]>,
+    tx_remaining_bytes: Cell<usize>,
+    rx_buffer: kernel::common::take_cell::TakeCell<'static, [u8]>,
+    rx_remaining_bytes: Cell<usize>,
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
 }
@@ -79,6 +88,10 @@ impl UART {
         UART {
             regs: UART_BASE as *mut Registers,
             client: Cell::new(None),
+            tx_buffer: kernel::common::take_cell::TakeCell::empty(),
+            tx_remaining_bytes: Cell::new(0),
+            rx_buffer: kernel::common::take_cell::TakeCell::empty(),
+            rx_remaining_bytes: Cell::new(0),
             tx_pin: Cell::new(None),
             rx_pin: Cell::new(None),
         }

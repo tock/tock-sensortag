@@ -243,9 +243,7 @@ SECTIONS
 
         . = ALIGN(4);
         _ezero = .;
-
-
-
+    
         /* Application Memory.
          *
          * Tock uses the remainder of SRAM for application memory.
@@ -255,7 +253,11 @@ SECTIONS
          * future enhancement may allow the kernel to parcel this memory space
          * dynamically, requiring changes to this section.
          */
+
+        . = ALIGN(1024);
+        *(.dma_control_table)
         . = ALIGN(MPU_MIN_ALIGN);
         *(.app_memory)
     } > ram
+    
 }
