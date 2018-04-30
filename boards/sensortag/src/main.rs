@@ -29,10 +29,6 @@ static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS]
 #[link_section = ".app_memory"]
 static mut APP_MEMORY: [u8; 11264] = [0; 11264];
 
-
-//static mut DMA_CFG: [u8; 1024] = [0; 1024];
-
-//
 pub struct Platform {
     ble_radio: &'static capsules::ble_advertising_driver::BLE<
         'static,

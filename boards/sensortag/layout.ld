@@ -253,9 +253,7 @@ SECTIONS
          * future enhancement may allow the kernel to parcel this memory space
          * dynamically, requiring changes to this section.
          */
-
-        //. = ALIGN(1024);
-        //*(.dma_control_table)
+         
         . = ALIGN(MPU_MIN_ALIGN);
         *(.app_memory)
     } > ram
