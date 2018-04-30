@@ -8,6 +8,30 @@ use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
 pub const UDMA_BASE: usize = 0x4002_0000;
 pub const UDMA_CONFIG_BASE: usize = 0x2000_0400;
 
+#[repr(align(1024))]
+pub struct ControlTable {
+    config_array: [u8; 1024],
+}
+
+/*
+struct DMAConfig {
+    source_ptr: usize,
+    dest_ptr: usize,
+    control: usize,
+    _unused: usize,
+}
+*/
+
+pub static mut DMACTRLTAB: ControlTable = ControlTable::new();
+
+impl ControlTable {
+    pub const fn new() -> ControlTable {
+        ControlTable {
+            config_array: [0; 1024]
+        }
+    }
+}
+
 #[repr(C)]
 struct Registers {
     status: ReadWrite<u32>,

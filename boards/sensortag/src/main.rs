@@ -13,7 +13,7 @@ extern crate cc26xx;
 extern crate kernel;
 
 use cc26xx::{aon, trng};
-use cc26x0::{gpio, radio, rtc, uart};
+use cc26x0::{gpio, radio, rtc, uart, udma};
 
 #[macro_use]
 pub mod io;
@@ -29,9 +29,10 @@ static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS]
 #[link_section = ".app_memory"]
 static mut APP_MEMORY: [u8; 11264] = [0; 11264];
 
-#[link_section = ".dma_control_table"]
-static DMA_CFG: [u8; 1024] = [0; 1024];
 
+//static mut DMA_CFG: [u8; 1024] = [0; 1024];
+
+//
 pub struct Platform {
     ble_radio: &'static capsules::ble_advertising_driver::BLE<
         'static,
@@ -235,7 +236,7 @@ pub unsafe fn reset_handler() {
     let mut chip = cc26x0::chip::Cc26x0::new();
 
     debug!("Initialization complete. Entering main loop\r");
-    
+    debug!("Location of DMA memory: {:p}",&udma::DMACTRLTAB);
     extern "C" {
         /// Beginning of the ROM region containing app images.
         static _sapps: u8;

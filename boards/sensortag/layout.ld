@@ -254,8 +254,8 @@ SECTIONS
          * dynamically, requiring changes to this section.
          */
 
-        . = ALIGN(1024);
-        *(.dma_control_table)
+        //. = ALIGN(1024);
+        //*(.dma_control_table)
         . = ALIGN(MPU_MIN_ALIGN);
         *(.app_memory)
     } > ram

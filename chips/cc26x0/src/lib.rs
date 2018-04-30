@@ -25,6 +25,7 @@ pub mod ioc;
 pub mod prcm;
 pub mod rtc;
 pub mod gpio;
+pub mod udma;
 
 // Since the setup code is converted from C -> Rust, we
 // ignore side effects from the conversion (unused vars & muts).
