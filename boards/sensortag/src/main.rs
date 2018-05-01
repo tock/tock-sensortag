@@ -168,6 +168,9 @@ pub unsafe fn reset_handler() {
     let rtc = &rtc::RTC;
     rtc.start();
 
+    let udma = &udma::UDMA;
+    udma.enable();
+
     let mux_alarm = static_init!(
         capsules::virtual_alarm::MuxAlarm<'static, rtc::Rtc>,
         capsules::virtual_alarm::MuxAlarm::new(&rtc::RTC)
@@ -236,7 +239,8 @@ pub unsafe fn reset_handler() {
     let mut chip = cc26x0::chip::Cc26x0::new();
 
     debug!("Initialization complete. Entering main loop\r");
-    debug!("Location of DMA memory: {:p}",&udma::DMACTRLTAB);
+    //debug!("DMA Control Table Location: 0x{:x}", &mut udma::DMACTRLTAB as *mut udma::ControlTable as u32 >> 10);
+    
     extern "C" {
         /// Beginning of the ROM region containing app images.
         static _sapps: u8;
