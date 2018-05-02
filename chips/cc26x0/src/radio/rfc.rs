@@ -170,7 +170,7 @@ impl RFCore {
         let rf_mode = match mode {
             RfcMode::BLE => 0x01,
             //RfcMode::BLE => 0x05,
-            _ => panic!("No other mode than BLE is currently supported for RF!\r")
+            _ => panic!("No other mode than BLE is currently supported for RF!\r"),
         };
 
         // Redirect power to the correct module
@@ -203,32 +203,37 @@ impl RFCore {
         bell_regs.rf_ack_interrupt_flag.set(0);
 
         // All interrupts to Cpe0 except INTERNAL_ERROR which is routed to Cpe1
-        bell_regs.rf_cpe_interrupt_vector_sel.write(RFCpeInterrupts::INTERNAL_ERROR::SET);
+        bell_regs
+            .rf_cpe_interrupt_vector_sel
+            .write(RFCpeInterrupts::INTERNAL_ERROR::SET);
         // Enable INTERNAL_ERROR and LOAD_DONE
         //bell_regs.rf_cpe_interrupt_enable.set(0xFFFFFFFF);
         bell_regs.rf_cpe_interrupt_enable.write(
-            RFCpeInterrupts::INTERNAL_ERROR::SET
-                + RFCpeInterrupts::COMMAND_DONE::SET
-                + RFCpeInterrupts::BOOT_DONE::SET
-                + RFCpeInterrupts::TX_DONE::SET
+            RFCpeInterrupts::INTERNAL_ERROR::SET + RFCpeInterrupts::COMMAND_DONE::SET
+                + RFCpeInterrupts::BOOT_DONE::SET + RFCpeInterrupts::TX_DONE::SET,
         );
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
 
         self.send_direct(&DirectCommand::new(RFC_CMD0, 0x10 | 0x40))
-            .ok().expect("could not initialize radio module.");
+            .ok()
+            .expect("could not initialize radio module.");
 
         // Request the bus
         self.send_direct(&DirectCommand::new(RFC_BUS_REQUEST, 1))
-            .ok().expect("could not request the bus to the radio module.");
+            .ok()
+            .expect("could not request the bus to the radio module.");
 
         // Send a ping command to verify that the core is ready and alive
         self.send_direct(&DirectCommand::new(RFC_PING, 0))
-            .ok().expect("could not ping the radio module.");
+            .ok()
+            .expect("could not ping the radio module.");
     }
 
     pub fn setup(&self, reg_override: u32) {
-        let mode = self.mode.get().expect("No RF mode selected, can not setup.");
+        let mode = self.mode
+            .get()
+            .expect("No RF mode selected, can not setup.");
         let cmd = RfcCommandRadioSetup {
             command_no: RFC_SETUP,
             status: 0,
@@ -238,7 +243,7 @@ impl RFCore {
             condition: {
                 let mut cond = RfcCondition(0);
                 cond.set_rule(0x01); // COND_NEVER
-                //cond.set_rule(5); // COND_SKIP_ON_FALSE
+                                     //cond.set_rule(5); // COND_SKIP_ON_FALSE
                 cond
             },
             mode: mode as u8,
@@ -333,7 +338,6 @@ impl RFCore {
         self.post_cmdr(command)
     }
 
-
     /// Post a command to the (CMDR) radio doorbell. Should only be used internally by the RFC
     /// module.
     fn post_cmdr(&self, command: u32) -> RfcResult {
@@ -395,8 +399,12 @@ impl RFCore {
                 bell_regs.rf_ack_interrupt_flag.set(0);
             }
             RfcInterrupt::Cpe0 => {
-                let command_done = bell_regs.rf_cpe_interrupt_flags.is_set(RFCpeInterrupts::COMMAND_DONE);
-                let tx_done = bell_regs.rf_cpe_interrupt_flags.is_set(RFCpeInterrupts::TX_DONE);
+                let command_done = bell_regs
+                    .rf_cpe_interrupt_flags
+                    .is_set(RFCpeInterrupts::COMMAND_DONE);
+                let tx_done = bell_regs
+                    .rf_cpe_interrupt_flags
+                    .is_set(RFCpeInterrupts::TX_DONE);
 
                 bell_regs.rf_cpe_interrupt_flags.set(0);
 

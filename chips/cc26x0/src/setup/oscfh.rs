@@ -16,9 +16,11 @@ pub unsafe extern "C" fn clock_source_set(mut ui32src_clk: u32, mut ui32osc: u32
 pub unsafe extern "C" fn clock_source_get(mut ui32src_clk: u32) -> u32 {
     let mut ui32clock_source: u32;
     if ui32src_clk == 0x4u32 {
-        ui32clock_source = ddi::ddi16bitfield_read(0x400ca000u32, 0x34u32, 0x60000000u32, 29u32) as (u32);
+        ui32clock_source =
+            ddi::ddi16bitfield_read(0x400ca000u32, 0x34u32, 0x60000000u32, 29u32) as (u32);
     } else {
-        ui32clock_source = ddi::ddi16bitfield_read(0x400ca000u32, 0x34u32, 0x10000000u32, 28u32) as (u32);
+        ui32clock_source =
+            ddi::ddi16bitfield_read(0x400ca000u32, 0x34u32, 0x10000000u32, 28u32) as (u32);
     }
     ui32clock_source
 }
