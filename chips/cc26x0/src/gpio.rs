@@ -41,6 +41,12 @@ pub unsafe fn power_on_gpio() {
     while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
     // Enable the GPIO clocks
     prcm::Clock::enable_gpio();
+
+    // Disable all pins by default to minimize leakage
+    for pin in PORT.pins.iter() {
+        pin.disable();
+    }
+
     // Set all pins in a low-power state
     set_pins_to_default_conf();
 }
@@ -62,10 +68,6 @@ pub unsafe fn set_pins_to_default_conf() {
     const SPI_MOSI: usize = 19;
     const SPI_CLK_FLASH: usize = 17;
     const TMP_RDY: usize = 1;
-
-    for pin in PORT.pins.iter() {
-        pin.disable();
-    }
 
     PORT[TMP_RDY].make_input();
     PORT[TMP_RDY].set_input_mode(hil::gpio::InputMode::PullUp);
