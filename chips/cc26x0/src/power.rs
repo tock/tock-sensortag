@@ -79,12 +79,17 @@ pub unsafe fn prepare_deep_sleep() {
     aon::AON.jtag_set_enabled(false);
     aon::AON.aux_disable_power_down_clock();
     aon::AON.aux_set_ram_retention(false);
-    aon::AON.mcu_set_ram_retention(false);
+    aon::AON.mcu_set_ram_retention(true);
     aon::AON.lock_io_pins(true);
 
     // We need to allow the aux domain to sleep when we enter sleep mode
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
-    aux::AUX_CTL.power_off();
+
+    // TODO: if we power off the aux completely we prevent the second wakeup,
+    //       and cause a hard-fault during the next access to the AUX domain/bus (eg. osc control)
+    //       Investigate this further, as the AUX domain draws ~70uA in sleep
+    //aux::AUX_CTL.power_off();
+
     while aon::AON.aux_is_on() {}
 
     // Configure power cycling (used to keep state in low power modes)
