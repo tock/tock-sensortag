@@ -9,6 +9,8 @@ use prcm;
 use setup::recharge;
 use rtc;
 use osc;
+use tmp;
+use gpio;
 
 pub static mut PM: PowerManager<RegionManager> = PowerManager::new(RegionManager);
 
@@ -31,12 +33,14 @@ impl ResourceManager for RegionManager {
     }
 }
 
-/// Initialise the power management
-/// dependencies and resources.
+/// Initialise the power management,dependencies and resources.
 pub unsafe fn init() {
     for pwr_region in POWER_REGIONS.iter() {
         PM.register_resource(&pwr_region);
     }
+    // Disable temperature sensor (TMP007)
+    let tmp_sensor = tmp::TMP::new();
+    tmp_sensor.disable_sensor();
 }
 
 fn vims_disable() {
@@ -47,150 +51,48 @@ fn vims_disable() {
     vims_ctl.set(0x00000003); // disable VIMS
 }
 
-/// Transition into deep sleep
-pub unsafe fn prepare_deep_sleep() {
-    // Step 1
-    prcm::Power::disable_domain(prcm::PowerDomain::CPU);
-
-    // Step 2
-    vims_disable();
-    prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
-
-    // Step 3
-    prcm::Power::disable_domain(prcm::PowerDomain::RFC);
-    prcm::Power::disable_domain(prcm::PowerDomain::Serial);
-    prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
-
-    // Step 4
-    prcm::acquire_uldo();
-
-    // Step 5
-    // Ensure that we're running on the internal oscillator and
-    // not the external (in case the radio has been used).
+fn switch_to_rc_oscillator() {
     if osc::OSC.clock_source_get(osc::ClockType::HF) != osc::HF_RCOSC {
         osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
         osc::OSC.perform_switch();
     }
     osc::OSC.clock_source_set(osc::ClockType::LF, 0x2);
     osc::OSC.disable_lf_clock_qualifiers();
+}
 
-    // Step 6 (Should really be a function in the aux module)
-    rtc::RTC.sync();
+/// Transition into deep sleep
+pub unsafe fn prepare_deep_sleep() {
+    gpio::set_pins_to_default_conf();
 
-    // We need to allow the aux domain to sleep when we enter sleep mode
-    aon::AON.aux_disable_power_down_clock();
-    aon::AON.sync();
-
-    // We need to allow the aux domain to sleep when we enter sleep mode
-    aon::AON.aux_disable_power_down_clock();
-    aon::AON.aux_set_ram_retention(false);
-
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
-
-    aux::AUX_CTL.power_off();
-    while aon::AON.aux_is_on() {}
-
-    // Step 7
-    // Use less recharge power by using DCDC
-    aon::AON.set_dcdc_enabled(true);
-    rtc::RTC.sync();
-
-    // Step 8
-    // We need to setup the recharge algorithm by TI, since this
-    // will tweak the variables depending on the power & current in order to successfully
-    // recharge.
-    recharge::before_power_down(0);
-    rtc::RTC.sync();
-
-    // Step 9
-    prcm::force_disable_dma_and_crypto();
-    aon::AON.jtag_set_enabled(false);
-
-    // Step 10
-    // Set the ram retention to retain SRAM
-    aon::AON.mcu_set_ram_retention(false);
-    rtc::RTC.sync();
-
-    // Step 11
-    prcm::mcu_power_down();
-
-    // Sync with the RTC before we are ready to transition into deep sleep
-    //rtc::RTC.sync();
-
-    /*aon::AON.mcu_power_down_enable();
-    // Use less recharge power by using DCDC
-    aon::AON.set_dcdc_enabled(true);
-
-    if osc::OSC.clock_source_get(osc::ClockType::HF) != osc::HF_RCOSC {
-        osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
-        osc::OSC.perform_switch();
-    }
-    osc::OSC.clock_source_set(osc::ClockType::LF, 0x2);
-    while osc::OSC.clock_source_get(osc::ClockType::LF) != 0x2 {};
-
-    rtc::RTC.sync();
-
-    // We need to setup the recharge algorithm by TI, since this
-    // will tweak the variables depending on the power & current in order to successfully
-    // recharge.
-    recharge::before_power_down(0);
-
-    // Force disable dma & crypto
-    // This due to that we can not successfully power down the MCU
-    // without them disabled (see p. 496 in the docs)
-    prcm::force_disable_dma_and_crypto();
-
-    // Set the MCU power down clock to no clock,
-    // this will reduce the power consumption.
-    aon::AON.mcu_disable_power_down_clock();
-
-    // Set the AUX power down clock to no clock,
-    // this will further reduce the power consumption.
-    aon::AON.aux_disable_power_down_clock();
-
-    rtc::RTC.sync();
-
-    // Set the ram retention to retain SRAM
-    aon::AON.mcu_set_ram_retention(true);
-
-    // Disable JTAG entirely, otherwise we'll never
-    // transition into deep sleep (if a debugger is attached, we still won't).
-    aon::AON.jtag_set_enabled(false);
-
-    rtc::RTC.sync();
-
-    // We need to allow the aux domain to sleep when we enter sleep mode
-    aon::AON.aux_disable_power_down_clock();
-    aon::AON.aux_set_ram_retention(false);
-
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
-
-    aux::AUX_CTL.power_off();
-    while aon::AON.aux_is_on() {}
-
-    // In order to preserve the pins we need to apply an
-    // io latch which will freeze the states of each pin during sleep modes
-    aon::AON.lock_io_pins(true);
-
-    rtc::RTC.sync();
-
-    // Disable all domains except Peripherals & Serial
-    // The peripheral & serial domain can be powered on during deep sleep,
-    // and is sometimes necessary. This is sometimes also done in
-    // the peripheral management, but here we ensure that they are completely
-    // disabled if some has been forgotten.
-    prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
+    prcm::Power::disable_domain(prcm::PowerDomain::CPU);
     prcm::Power::disable_domain(prcm::PowerDomain::RFC);
     prcm::Power::disable_domain(prcm::PowerDomain::Serial);
     prcm::Power::disable_domain(prcm::PowerDomain::Peripherals);
-    prcm::Power::disable_domain(prcm::PowerDomain::CPU);
+    prcm::Power::disable_domain(prcm::PowerDomain::VIMS);
 
-    // We need to supply power using the ULDO power supply; which is a low power supply
     prcm::acquire_uldo();
+    prcm::force_disable_dma_and_crypto();
 
-    aon::AON.sync();*/
+    switch_to_rc_oscillator();
 
-    // Final step
+    aon::AON.set_dcdc_enabled(true);
+    aon::AON.jtag_set_enabled(false);
+    aon::AON.aux_disable_power_down_clock();
+    aon::AON.aux_set_ram_retention(false);
+    aon::AON.mcu_set_ram_retention(false);
+    aon::AON.lock_io_pins(true);
+
+    // We need to allow the aux domain to sleep when we enter sleep mode
+    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+    aux::AUX_CTL.power_off();
+    while aon::AON.aux_is_on() {}
+
+    // Configure power cycling (used to keep state in low power modes)
+    recharge::before_power_down(0);
+
+    vims_disable();
+
+    rtc::RTC.sync();
     scb::set_sleepdeep();
 }
 
@@ -203,27 +105,18 @@ pub unsafe fn prepare_wakeup() {
     // We're ready to allow the auxilliary domain to wake up once it's needed.
     aux::AUX_CTL.wakeup_event(aux::WakeupMode::WakeUp);
 
-    // If we were using the ULDO power to supply the peripherals, we can safely
-    // disable it now - it is unnecessary if it's started.
+    // If we were using the uLDO power to supply the peripherals, we can safely disable it now
     prcm::release_uldo();
 
-    // Enable the CPU power domain once again, or ensure that it is powered (it often are
-    // when we transition from sleep).
     prcm::Power::enable_domain(prcm::PowerDomain::CPU);
     prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
     prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-
-    // Again, sync with the AON since the ULDO might have been released.
-    rtc::RTC.sync();
 
     // Unlock IO pins and let them be controlled by GPIO
     aon::AON.lock_io_pins(false);
 
     recharge::after_power_down();
 
-    // Sync with the AON after our recharge calibration
     rtc::RTC.sync();
-
-    // Clear the deep sleep bit
     scb::unset_sleepdeep();
 }

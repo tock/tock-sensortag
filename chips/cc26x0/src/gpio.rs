@@ -35,35 +35,76 @@ pub struct GpioRegisters {
 
 use kernel::hil::gpio::PinCtl;
 pub unsafe fn power_on_gpio() {
-    const MPU_POWER: usize = 12;
-    const MIC_POWER: usize = 13;
-
     // Power on peripherals (eg. GPIO)
     prcm::Power::enable_domain(prcm::PowerDomain::Peripherals);
     // Wait for it to turn on until we continue
     while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
     // Enable the GPIO clocks
     prcm::Clock::enable_gpio();
-
-    for pin in PORT.pins.iter() {
-        pin.disable();
-    }
-
-    // Force the MPU to be off
-    PORT[MPU_POWER].make_output();
-    PORT[MPU_POWER].set_input_mode(hil::gpio::InputMode::PullDown);
-    PORT[MPU_POWER].clear();
-
-    PORT[MIC_POWER].make_input();
-    PORT[MIC_POWER].set_input_mode(hil::gpio::InputMode::PullDown);
-    PORT[MIC_POWER].clear();
+    // Set all pins in a low-power state
+    set_pins_to_default_conf();
 }
 
-pub unsafe fn diable_all_pins() {
+pub unsafe fn set_pins_to_default_conf() {
+    const MIC_POWER: usize = 13;
+    const AUDIO_DI: usize = 2;
+    const AUDIO_CLK: usize = 11;
+    const DP2: usize = 23;
+    const DP1: usize = 24;
+    const DP0: usize = 25;
+    const DP3: usize = 27;
+    const DEVPK_ID: usize = 30;
+    const UART_TX: usize = 29;
+    const SDA_HP: usize = 8;
+    const SCL_HP: usize = 9;
+    const SDA: usize = 5;
+    const SCL: usize = 6;
+    const SPI_MOSI: usize = 19;
+    const SPI_CLK_FLASH: usize = 17;
+    const TMP_RDY: usize = 1;
+
     for pin in PORT.pins.iter() {
         pin.disable();
     }
 
+    PORT[TMP_RDY].make_input();
+    PORT[TMP_RDY].set_input_mode(hil::gpio::InputMode::PullUp);
+
+    PORT[SPI_MOSI].make_input();
+    PORT[SPI_MOSI].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[SPI_CLK_FLASH].make_input();
+    PORT[SPI_CLK_FLASH].set_input_mode(hil::gpio::InputMode::PullDown);
+
+    PORT[SDA_HP].make_input();
+    PORT[SDA_HP].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[SCL_HP].make_input();
+    PORT[SCL_HP].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[SDA].make_input();
+    PORT[SDA].set_input_mode(hil::gpio::InputMode::PullUp);
+    PORT[SCL].make_input();
+    PORT[SCL].set_input_mode(hil::gpio::InputMode::PullUp);
+
+    PORT[DP0].make_input();
+    PORT[DP0].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[DP1].make_input();
+    PORT[DP1].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[DP2].make_input();
+    PORT[DP2].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[DP3].make_input();
+    PORT[DP3].set_input_mode(hil::gpio::InputMode::PullDown);
+
+    PORT[DEVPK_ID].make_input();
+    PORT[DEVPK_ID].set_input_mode(hil::gpio::InputMode::PullUp);
+
+    PORT[MIC_POWER].make_output();
+    PORT[MIC_POWER].clear();
+    PORT[AUDIO_DI].make_input();
+    PORT[AUDIO_DI].set_input_mode(hil::gpio::InputMode::PullDown);
+    PORT[AUDIO_CLK].make_input();
+    PORT[AUDIO_CLK].set_input_mode(hil::gpio::InputMode::PullDown);
+
+    PORT[UART_TX].make_input();
+    PORT[UART_TX].set_input_mode(hil::gpio::InputMode::PullDown);
 }
 
 pub struct GPIOPin {
@@ -102,19 +143,6 @@ impl GPIOPin {
     pub fn iocfg(&self) -> &ioc::IocfgPin {
         &ioc::IOCFG[self.pin]
     }
-
-    pub fn get_dout_all_pins(&self) -> u32 {
-        let regs: &GpioRegisters = unsafe { &*self.regs };
-        regs.dout_31_0.get()
-    }
-
-    pub fn conf_as_input(&self) {
-        self.enable_gpio();
-        ioc::IOCFG[self.pin].enable_input();
-        // Disable data output
-        let regs: &GpioRegisters = unsafe { &*self.regs };
-        regs.doe.set(regs.doe.get() & !self.pin_mask);
-    }
 }
 
 impl hil::gpio::PinCtl for GPIOPin {
@@ -134,12 +162,17 @@ impl hil::gpio::Pin for GPIOPin {
     }
 
     fn make_input(&self) {
-        self.conf_as_input();
+        self.enable_gpio();
+        ioc::IOCFG[self.pin].enable_input();
+        // Disable data output
+        let regs: &GpioRegisters = unsafe { &*self.regs };
+        regs.doe.set(regs.doe.get() & !self.pin_mask);
     }
 
     fn disable(&self) {
-        ioc::IOCFG[self.pin].enable_input();
-        hil::gpio::PinCtl::set_input_mode(self, hil::gpio::InputMode::PullDown);
+        ioc::IOCFG[self.pin].low_leakage_mode();
+        let regs: &GpioRegisters = unsafe { &*self.regs };
+        regs.doe.set(regs.doe.get() & !self.pin_mask);
     }
 
     fn set(&self) {
