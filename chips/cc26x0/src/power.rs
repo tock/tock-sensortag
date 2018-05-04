@@ -9,7 +9,6 @@ use prcm;
 use setup::recharge;
 use rtc;
 use osc;
-use tmp;
 use gpio;
 
 pub static mut PM: PowerManager<RegionManager> = PowerManager::new(RegionManager);
@@ -38,9 +37,6 @@ pub unsafe fn init() {
     for pwr_region in POWER_REGIONS.iter() {
         PM.register_resource(&pwr_region);
     }
-    // Disable temperature sensor (TMP007)
-    let tmp_sensor = tmp::TMP::new();
-    tmp_sensor.disable_sensor();
 }
 
 fn vims_disable() {
