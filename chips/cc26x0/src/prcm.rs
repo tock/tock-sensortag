@@ -16,7 +16,6 @@ use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
 #[repr(C)]
 struct AonWucRegisters {
     mcu_clk: ReadWrite<u32>,
-
     // Fill out as needed
 }
 
@@ -149,7 +148,6 @@ register_bitfields![
 const PRCM_BASE: *mut PrcmRegisters = 0x4008_2000 as *mut PrcmRegisters;
 const AON_WUC_BASE: *mut AonWucRegisters = 0x4009_1000 as *mut AonWucRegisters;
 
-
 /// In order to save changes to the PRCM, we need to trigger
 /// a clock to load the changes into the PRCM module.
 fn prcm_commit() {
@@ -165,10 +163,8 @@ pub fn force_disable_dma_and_crypto() {
     let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
 
     // TODO(cpluss): do not override these, detect if enabled instead
-    regs.sec_dma_clk_deep_sleep.modify(
-        SECDMAClockGate::DMA_CLK_EN::CLEAR
-            + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR
-    );
+    regs.sec_dma_clk_deep_sleep
+        .modify(SECDMAClockGate::DMA_CLK_EN::CLEAR + SECDMAClockGate::CRYPTO_CLK_EN::CLEAR);
 
     prcm_commit();
 }
@@ -210,7 +206,7 @@ impl From<u32> for PowerDomain {
             2 => PowerDomain::Peripherals,
             3 => PowerDomain::VIMS,
             4 => PowerDomain::CPU,
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 }
@@ -224,16 +220,16 @@ impl Power {
         match domain {
             PowerDomain::Peripherals => {
                 regs.pd_ctl0.modify(PowerDomain0::PERIPH_ON::SET);
-                while !Power::is_enabled(PowerDomain::Peripherals) {};
+                while !Power::is_enabled(PowerDomain::Peripherals) {}
             }
             PowerDomain::Serial => {
                 regs.pd_ctl0.modify(PowerDomain0::SERIAL_ON::SET);
-                while !Power::is_enabled(PowerDomain::Serial) {};
+                while !Power::is_enabled(PowerDomain::Serial) {}
             }
             PowerDomain::RFC => {
                 regs.pd_ctl0.modify(PowerDomain0::RFC_ON::SET);
                 regs.pd_ctl1.modify(PowerDomain1::RFC_ON::SET);
-                while !Power::is_enabled(PowerDomain::RFC) {};
+                while !Power::is_enabled(PowerDomain::RFC) {}
             }
             PowerDomain::CPU => {
                 regs.pd_ctl1.modify(PowerDomain1::CPU_ON::SET);
@@ -277,7 +273,7 @@ impl Power {
             PowerDomain::RFC => {
                 regs.pd_stat1.is_set(PowerDomainStatus1::RFC_ON)
                     && regs.pd_stat0.is_set(PowerDomainStatus0::RFC_ON)
-            },
+            }
             PowerDomain::CPU => regs.pd_stat1.is_set(PowerDomainStatus1::CPU_ON),
             PowerDomain::VIMS => regs.pd_stat1.is_set(PowerDomainStatus1::VIMS_ON),
         }
@@ -307,7 +303,8 @@ impl Clock {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.uart_clk_gate_run.write(ClockGate::CLK_EN::CLEAR);
         regs.uart_clk_gate_sleep.write(ClockGate::CLK_EN::CLEAR);
-        regs.uart_clk_gate_deep_sleep.write(ClockGate::CLK_EN::CLEAR);
+        regs.uart_clk_gate_deep_sleep
+            .write(ClockGate::CLK_EN::CLEAR);
         prcm_commit();
     }
 

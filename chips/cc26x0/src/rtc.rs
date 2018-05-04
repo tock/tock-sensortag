@@ -147,7 +147,7 @@ impl Rtc {
     }
 }
 
-pub struct RtcFrequency (());
+pub struct RtcFrequency(());
 impl Frequency for RtcFrequency {
     fn frequency() -> u32 {
         // The frequency of the RTC depends on what clock
@@ -163,10 +163,10 @@ impl Frequency for RtcFrequency {
         let clock_source = osc::OSC.clock_source_get(osc::ClockType::LF);
         match clock_source {
             osc::LF_DERIVED_RCOSC => 31250,
-            osc::LF_DERIVED_XOSC  => 32000,
-            osc::LF_XOSC          => 32768,
-            osc::LF_RCOSC         => 31250,
-            _ => panic!("Unknown clock source selected!")
+            osc::LF_DERIVED_XOSC => 32000,
+            osc::LF_XOSC => 32768,
+            osc::LF_RCOSC => 31250,
+            _ => panic!("Unknown clock source selected!"),
         }
     }
 }

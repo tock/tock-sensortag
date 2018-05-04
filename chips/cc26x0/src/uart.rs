@@ -207,7 +207,9 @@ impl kernel::hil::uart::UART for UART {
     }
 
     fn init(&self, params: kernel::hil::uart::UARTParams) {
-        unsafe { PM.request_resource(prcm::PowerDomain::Serial as u32); }
+        unsafe {
+            PM.request_resource(prcm::PowerDomain::Serial as u32);
+        }
         prcm::Clock::enable_uart_run();
 
         self.disable_interrupts();
@@ -254,7 +256,9 @@ impl peripheral_manager::PowerClient for UART {
     }
 
     fn after_wakeup(&self, _sleep_mode: u32) {
-        unsafe { PM.request_resource(prcm::PowerDomain::Serial as u32); }
+        unsafe {
+            PM.request_resource(prcm::PowerDomain::Serial as u32);
+        }
         prcm::Clock::enable_uart_run();
         self.configure();
     }

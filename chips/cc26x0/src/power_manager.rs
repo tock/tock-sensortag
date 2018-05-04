@@ -67,7 +67,9 @@ pub struct Resource<'a> {
 }
 
 impl<'a> ListNode<'a, Resource<'a>> for Resource<'a> {
-    fn next(&self) -> &'a ListLink<Resource<'a>> { &self.next }
+    fn next(&self) -> &'a ListLink<Resource<'a>> {
+        &self.next
+    }
 }
 
 impl<'a> Resource<'a> {
@@ -115,7 +117,7 @@ impl<'a, T: ResourceManager> PowerManager<'a, T> {
     pub fn request_resource(&self, resource_id: u32) {
         let resource = self.resources
             .iter()
-            .find(| r| r.id.get() == resource_id)
+            .find(|r| r.id.get() == resource_id)
             .expect("Resource not found.");
 
         if resource.ref_count.get() == 0 {
@@ -131,7 +133,7 @@ impl<'a, T: ResourceManager> PowerManager<'a, T> {
     pub fn release_resource(&self, resource_id: u32) {
         let resource = self.resources
             .iter()
-            .find(|r | r.id.get() == resource_id)
+            .find(|r| r.id.get() == resource_id)
             .expect("Resource not found.");
 
         if resource.ref_count.get() > 0 {

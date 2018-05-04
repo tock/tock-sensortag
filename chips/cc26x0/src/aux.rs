@@ -2,7 +2,7 @@
 //!
 //! NOTE: as of now, the aux controller can only be used by one process at a time.
 
-use kernel::common::regs::{ReadOnly,ReadWrite,WriteOnly};
+use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
 use aon;
 
 struct AuxWucRegisters {
@@ -102,12 +102,8 @@ impl Aux {
     pub fn clock_is_active(&self, clock: AuxClock) -> bool {
         let aux_regs: &AuxWucRegisters = unsafe { &*self.aux_regs };
         match clock {
-            AuxClock::OscillatorControl => {
-                aux_regs.mod_clk_en0.is_set(ModClkEn0::AUX_DDI0_OSC)
-            },
-            AuxClock::Semaphores => {
-                aux_regs.mod_clk_en0.is_set(ModClkEn0::SMPH)
-            }
+            AuxClock::OscillatorControl => aux_regs.mod_clk_en0.is_set(ModClkEn0::AUX_DDI0_OSC),
+            AuxClock::Semaphores => aux_regs.mod_clk_en0.is_set(ModClkEn0::SMPH),
         }
     }
 
@@ -142,7 +138,7 @@ impl Aux {
     pub fn wakeup_event(&self, mode: WakeupMode) {
         match mode {
             WakeupMode::AllowSleep => aon::AON.aux_wakeup(false),
-            WakeupMode::WakeUp => aon::AON.aux_wakeup(true)
+            WakeupMode::WakeUp => aon::AON.aux_wakeup(true),
         }
     }
 

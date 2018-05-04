@@ -6,7 +6,7 @@
 //! MCU never go to sleep and is always active.
 
 use kernel::common::VolatileCell;
-use kernel::common::regs::{ReadOnly,ReadWrite};
+use kernel::common::regs::{ReadOnly, ReadWrite};
 use rtc;
 
 #[repr(C)]
@@ -47,7 +47,7 @@ struct AonWucRegisters {
 struct AonSysctlRegisters {
     pwrtcl: ReadWrite<u32, PwrCtl::Register>,
     resetctl: ReadOnly<u32>,
-    sleepctl: ReadOnly<u32>
+    sleepctl: ReadOnly<u32>,
 }
 
 register_bitfields![
@@ -128,7 +128,6 @@ register_bitfields![
     ]
 ];
 
-
 pub struct Aon {
     event_regs: *const AonEventRegisters,
     aon_wuc_regs: *const AonWucRegisters,
@@ -143,7 +142,7 @@ impl Aon {
         Aon {
             event_regs: 0x4009_3000 as *const AonEventRegisters,
             aon_wuc_regs: 0x4009_1000 as *const AonWucRegisters,
-            aon_ioc_regs:  0x4009_4000 as *const AonIocRegisters,
+            aon_ioc_regs: 0x4009_4000 as *const AonIocRegisters,
             aon_sysctl_regs: 0x4009_0000 as *const AonSysctlRegisters,
         }
     }
@@ -172,15 +171,11 @@ impl Aon {
     pub fn set_dcdc_enabled(&self, enabled: bool) {
         let regs: &AonSysctlRegisters = unsafe { &*self.aon_sysctl_regs };
         if enabled {
-            regs.pwrtcl.modify(
-                PwrCtl::DCDC_ACTIVE::SET
-                    + PwrCtl::DCDC_EN::SET
-            );
+            regs.pwrtcl
+                .modify(PwrCtl::DCDC_ACTIVE::SET + PwrCtl::DCDC_EN::SET);
         } else {
-            regs.pwrtcl.modify(
-                PwrCtl::DCDC_ACTIVE::CLEAR
-                    + PwrCtl::DCDC_EN::CLEAR
-            );
+            regs.pwrtcl
+                .modify(PwrCtl::DCDC_ACTIVE::CLEAR + PwrCtl::DCDC_EN::CLEAR);
         }
     }
 
@@ -188,8 +183,7 @@ impl Aon {
         let regs: &AonIocRegisters = unsafe { &*self.aon_ioc_regs };
         if lock {
             regs.ioc_latch.write(IocLatch::EN::CLEAR);
-        }
-        else {
+        } else {
             regs.ioc_latch.write(IocLatch::EN::SET);
         }
     }
@@ -197,14 +191,22 @@ impl Aon {
     pub fn aux_set_ram_retention(&self, enabled: bool) {
         let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         regs.aux_cfg.modify({
-            if enabled { AuxCfg::RAM_RET_EN::SET } else { AuxCfg::RAM_RET_EN::CLEAR }
+            if enabled {
+                AuxCfg::RAM_RET_EN::SET
+            } else {
+                AuxCfg::RAM_RET_EN::CLEAR
+            }
         });
     }
 
     pub fn aux_wakeup(&self, wakeup: bool) {
         let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         regs.aux_ctl.modify({
-            if wakeup { AuxCtl::AUX_FORCE_ON::SET } else { AuxCtl::AUX_FORCE_ON::CLEAR }
+            if wakeup {
+                AuxCtl::AUX_FORCE_ON::SET
+            } else {
+                AuxCtl::AUX_FORCE_ON::CLEAR
+            }
         });
     }
 
@@ -216,38 +218,40 @@ impl Aon {
     pub fn jtag_set_enabled(&self, enabled: bool) {
         let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         regs.jtag_cfg.modify({
-            if enabled { JtagCfg::JTAG_PD_FORCE_ON::SET } else { JtagCfg::JTAG_PD_FORCE_ON::CLEAR }
+            if enabled {
+                JtagCfg::JTAG_PD_FORCE_ON::SET
+            } else {
+                JtagCfg::JTAG_PD_FORCE_ON::CLEAR
+            }
         });
     }
 
     pub fn mcu_set_ram_retention(&self, on: bool) {
         let regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         regs.mcu_cfg.modify({
-            if on { McuCfg::SRAM_RET_EN::ON } else { McuCfg::SRAM_RET_EN::OFF }
+            if on {
+                McuCfg::SRAM_RET_EN::ON
+            } else {
+                McuCfg::SRAM_RET_EN::OFF
+            }
         });
     }
 
     pub fn mcu_disable_power_down_clock(&self) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         // Disable the clock
-        aon_regs.mcu_clk.modify(
-            McuClk::PWR_DWN_SRC::NO_CLOCK
-        );
+        aon_regs.mcu_clk.modify(McuClk::PWR_DWN_SRC::NO_CLOCK);
     }
 
     pub fn aux_disable_power_down_clock(&self) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
-        aon_regs.aux_clk.modify(
-            AuxClk::PWR_DWN_SRC::NO_CLOCK
-        );
+        aon_regs.aux_clk.modify(AuxClk::PWR_DWN_SRC::NO_CLOCK);
     }
 
     pub fn mcu_power_down_enable(&self) {
         let aon_regs: &AonWucRegisters = unsafe { &*self.aon_wuc_regs };
         // Enable power down of the MCU
-        aon_regs.ctl0.modify(
-            Ctl0::PWR_DWN_DIS::CLEAR
-        );
+        aon_regs.ctl0.modify(Ctl0::PWR_DWN_DIS::CLEAR);
     }
 
     /// Await a cycle of the AON domain in order

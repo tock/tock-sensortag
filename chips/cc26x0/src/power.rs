@@ -1,6 +1,6 @@
 use kernel::common::VolatileCell;
 use power_manager::{PowerManager, Resource, ResourceManager};
-use prcm::{Power,PowerDomain};
+use prcm::{Power, PowerDomain};
 use cortexm3::scb;
 
 use aux;
@@ -15,7 +15,7 @@ pub static mut PM: PowerManager<RegionManager> = PowerManager::new(RegionManager
 
 pub static mut POWER_REGIONS: [Resource; 2] = [
     Resource::new(PowerDomain::Serial as u32),
-    Resource::new(PowerDomain::Peripherals as u32)
+    Resource::new(PowerDomain::Peripherals as u32),
 ];
 
 pub struct RegionManager;
@@ -43,7 +43,8 @@ fn vims_disable() {
     const VIMS_BASE: u32 = 0x4003_4000;
     const VIMS_O_CTL: u32 = 0x00000004;
 
-    let vims_ctl: &VolatileCell<u32> = unsafe { &*((VIMS_BASE + VIMS_O_CTL) as *const VolatileCell<u32>) };
+    let vims_ctl: &VolatileCell<u32> =
+        unsafe { &*((VIMS_BASE + VIMS_O_CTL) as *const VolatileCell<u32>) };
     vims_ctl.set(0x00000003); // disable VIMS
 }
 

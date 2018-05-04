@@ -4,7 +4,7 @@
 
 use aux;
 use setup::oscfh;
-use kernel::common::regs::{ReadWrite,ReadOnly};
+use kernel::common::regs::{ReadOnly, ReadWrite};
 
 /*
     The cc26xx chips have two clock sources:
@@ -170,16 +170,14 @@ impl Oscillator {
     ///         stabilized to RCOSC
     pub fn disable_lf_clock_qualifiers(&self) {
         // Wait until the clock source has been set & stabilised
-        while self.clock_source_get(ClockType::LF) != LF_RCOSC { }
+        while self.clock_source_get(ClockType::LF) != LF_RCOSC {}
 
         let regs: &DdiRegisters = unsafe { &*self.r_regs };
 
         // Disable the LF clock qualifiers as they are known to prevent
         // standby modes (deep sleep w/o MCU power).
-        regs.ctl0.modify(
-            Ctl0::BYPASS_XOSC_LF_CLK_QUAL::SET
-                + Ctl0::BYPASS_RCOSC_LF_CLK_QUAL::SET
-        );
+        regs.ctl0
+            .modify(Ctl0::BYPASS_XOSC_LF_CLK_QUAL::SET + Ctl0::BYPASS_RCOSC_LF_CLK_QUAL::SET);
     }
 
     pub fn request_switch_to_hf_xosc(&self) {

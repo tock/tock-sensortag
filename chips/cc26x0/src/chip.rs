@@ -29,7 +29,7 @@ impl From<u32> for SleepMode {
             0 => SleepMode::DeepSleep,
             1 => SleepMode::Sleep,
             2 => SleepMode::Active,
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 }
@@ -100,16 +100,14 @@ impl kernel::Chip for Cc26x0 {
     }
 
     fn sleep(&self) {
-        let sleep_mode: SleepMode = SleepMode::from(unsafe {
-            peripherals::M.lowest_sleep_mode()
-        });
+        let sleep_mode: SleepMode = SleepMode::from(unsafe { peripherals::M.lowest_sleep_mode() });
 
         match sleep_mode {
             SleepMode::DeepSleep => unsafe {
                 peripherals::M.before_sleep(sleep_mode as u32);
                 power::prepare_deep_sleep();
             },
-            _ => ()
+            _ => (),
         }
 
         unsafe { support::wfi() }
@@ -119,8 +117,7 @@ impl kernel::Chip for Cc26x0 {
                 power::prepare_wakeup();
                 peripherals::M.after_wakeup(sleep_mode as u32);
             },
-            _ => ()
+            _ => (),
         }
     }
 }
-
