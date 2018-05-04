@@ -134,13 +134,6 @@ impl UART {
             .write(Control::UART_ENABLE::SET + Control::RX_ENABLE::SET + Control::TX_ENABLE::SET);
     }
 
-    fn power_and_clock(&self) {
-        /*prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) {}*/
-        power::LPM.register(&UART_POWER_MODULE);
-        prcm::Clock::enable_uart_run();
-    }
-
     fn set_baud_rate(&self, baud_rate: u32) {
         // Fractional baud rate divider
         let div = (((MCU_CLOCK * 8) / baud_rate) + 1) / 2;
@@ -246,6 +239,7 @@ impl peripheral_manager::PowerClient for UART {
         while self.busy() {}
 
         unsafe {
+            // Disable the TX & RX pins in order to avoid current leakage
             self.tx_pin.get().map(|pin| {
                 gpio::PORT[pin as usize].disable();
             });
@@ -255,6 +249,7 @@ impl peripheral_manager::PowerClient for UART {
 
             PM.release_resource(prcm::PowerDomain::Serial as u32);
         }
+
         prcm::Clock::disable_uart_run();
     }
 
