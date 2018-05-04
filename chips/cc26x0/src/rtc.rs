@@ -2,7 +2,10 @@
 
 use core::cell::Cell;
 use kernel::common::regs::{ReadOnly, ReadWrite};
-use kernel::hil::time::{self, Alarm, Freq32KHz, Time};
+use kernel::hil::time::{self, Alarm, Time};
+use kernel::hil::time::Frequency;
+
+use osc;
 
 #[repr(C)]
 pub struct RtcRegisters {
@@ -144,8 +147,32 @@ impl Rtc {
     }
 }
 
+pub struct RtcFrequency (());
+impl Frequency for RtcFrequency {
+    fn frequency() -> u32 {
+        // The frequency of the RTC depends on what clock
+        // source we have configured.
+
+        /*
+            31.25 kHz derived from 24-MHz XTAL oscillator
+            32-kHz RC oscillator
+            32.768-kHz XTAL oscillator
+            31.25 kHz derived from 48-MHz RC oscillator
+        */
+
+        let clock_source = osc::OSC.clock_source_get(osc::ClockType::LF);
+        match clock_source {
+            osc::LF_DERIVED_RCOSC => 31250,
+            osc::LF_DERIVED_XOSC  => 32000,
+            osc::LF_XOSC          => 32768,
+            osc::LF_RCOSC         => 31250,
+            _ => panic!("Unknown clock source selected!")
+        }
+    }
+}
+
 impl Time for Rtc {
-    type Frequency = Freq32KHz;
+    type Frequency = RtcFrequency;
 
     fn disable(&self) {
         let regs: &RtcRegisters = unsafe { &*self.regs };

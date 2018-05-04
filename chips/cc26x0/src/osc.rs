@@ -34,6 +34,8 @@ pub enum ClockType {
 pub const HF_RCOSC: u8 = 0x00;
 pub const HF_XOSC: u8 = 0x01;
 
+pub const LF_DERIVED_RCOSC: u8 = 0x00;
+pub const LF_DERIVED_XOSC: u8 = 0x01;
 pub const LF_RCOSC: u8 = 0x02;
 pub const LF_XOSC: u8 = 0x03;
 
