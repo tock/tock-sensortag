@@ -201,6 +201,18 @@ impl Clock {
         prcm_commit();
     }
 
+    pub fn enable_dma() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.sec_dma_clk_run
+            .write(SECDMAClockGate::DMA_CLK_EN::SET);
+        regs.sec_dma_clk_sleep
+            .write(SECDMAClockGate::DMA_CLK_EN::SET);
+        regs.sec_dma_clk_deep_sleep
+            .write(SECDMAClockGate::DMA_CLK_EN::SET);
+
+        prcm_commit();
+    }
+
     pub fn enable_rfc() {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.rfc_clk_gate.write(ClockGate::CLK_EN::SET);

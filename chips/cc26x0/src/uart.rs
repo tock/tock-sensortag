@@ -28,7 +28,7 @@ struct Registers {
     ris: ReadOnly<u32, Interrupts::Register>,
     mis: ReadOnly<u32, Interrupts::Register>,
     icr: WriteOnly<u32, Interrupts::Register>,
-    dmactl: ReadWrite<u32, DMACtl::Register>
+    dmactl: ReadWrite<u32, DMACtl::Register>,
 }
 
 register_bitfields![
