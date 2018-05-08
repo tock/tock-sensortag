@@ -6,6 +6,7 @@ use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
 use kernel::ReturnCode;
 use prcm;
 
+
 pub const UDMA_BASE: usize = 0x4002_0000;
 
 #[repr(align(1024))]
@@ -19,6 +20,17 @@ struct DMAConfig {
     dest_ptr: usize,
     control: ReadWrite<u32,DMATableControl::Register>,
     _unused: usize,
+}
+
+impl DMAConfig {
+    const fn new() -> DMAConfig {
+        DMAConfig {
+            source_ptr: 0, 
+            dest_ptr: 0, 
+            control: ReadWrite::new(0), 
+            _unused: 0 
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -47,20 +59,18 @@ pub enum DMAPeripheral {
 }
 
 
-static mut DMACTRLTAB: ControlTable = ControlTable::new();
+//static mut DMACTRLTAB: ControlTable = ControlTable::new();
 
-impl ControlTable {
-    const fn new() -> ControlTable {
-        ControlTable {
-            config_array: [DMAConfig {
-                                source_ptr: 0, 
-                                  dest_ptr: 0,
-                                   control: ReadWrite::new(0),
-                                   _unused: 0
-                            }; 32]
-        }
-    }
-}
+static mut DMACTRLTAB: [DMAConfig; 32] = [
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new(),
+    DMAConfig::new(), DMAConfig::new(), DMAConfig::new(), DMAConfig::new()  
+];
 
 #[repr(C)]
 struct DMARegisters {
@@ -158,7 +168,7 @@ impl Udma {
         self.power_and_clock();
         regs.cfg.write(Config::MASTERENABLE::SET);
         unsafe{
-            regs.ctrl.set(&mut DMACTRLTAB as *mut ControlTable as u32)
+            regs.ctrl.set(&mut DMACTRLTAB[0] as *mut DMAConfig as u32)
         }
     }
 
@@ -174,7 +184,7 @@ impl Udma {
         dest_address: usize,
     ) { 
         unsafe{
-            DMACTRLTAB.config_array[channel as usize].dest_ptr = dest_address;
+            DMACTRLTAB[channel as usize].dest_ptr = dest_address;
         }
     }
 
@@ -184,7 +194,7 @@ impl Udma {
         source_address: usize,
     ) { 
         unsafe{
-            DMACTRLTAB.config_array[channel as usize].source_ptr = source_address;
+            DMACTRLTAB[channel as usize].source_ptr = source_address;
         }
     }
 }
