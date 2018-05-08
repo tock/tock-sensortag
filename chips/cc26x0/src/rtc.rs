@@ -5,8 +5,6 @@ use kernel::common::regs::{ReadOnly, ReadWrite};
 use kernel::hil::time::{self, Alarm, Time};
 use kernel::hil::time::Frequency;
 
-use osc;
-
 #[repr(C)]
 pub struct RtcRegisters {
     ctl: ReadWrite<u32, Control::Register>,
@@ -147,32 +145,19 @@ impl Rtc {
     }
 }
 
-pub struct RtcFrequency(());
-impl Frequency for RtcFrequency {
+pub struct RtcFreq(());
+
+impl Frequency for RtcFreq {
+    // The RTC Frequency is tuned, as there is exactly 0xFFFF (64kHz)
+    // subsec increments to reach a second, this yields the correct
+    // `tics` to set the comparator correctly.
     fn frequency() -> u32 {
-        // The frequency of the RTC depends on what clock
-        // source we have configured.
-
-        /*
-            31.25 kHz derived from 24-MHz XTAL oscillator
-            32-kHz RC oscillator
-            32.768-kHz XTAL oscillator
-            31.25 kHz derived from 48-MHz RC oscillator
-        */
-
-        let clock_source = osc::OSC.clock_source_get(osc::ClockType::LF);
-        match clock_source {
-            osc::LF_DERIVED_RCOSC => 31250,
-            osc::LF_DERIVED_XOSC => 32000,
-            osc::LF_XOSC => 32768,
-            osc::LF_RCOSC => 31250,
-            _ => panic!("Unknown clock source selected!"),
-        }
+        0xFFFF
     }
 }
 
 impl Time for Rtc {
-    type Frequency = RtcFrequency;
+    type Frequency = RtcFreq;
 
     fn disable(&self) {
         let regs: &RtcRegisters = unsafe { &*self.regs };
