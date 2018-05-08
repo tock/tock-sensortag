@@ -48,10 +48,9 @@ fn vims_disable() {
     vims_ctl.set(0x00000003); // disable VIMS
 }
 
-fn switch_to_rc_oscillator() {
+pub fn switch_to_rc_oscillator() {
     if osc::OSC.clock_source_get(osc::ClockType::HF) != osc::HF_RCOSC {
-        osc::OSC.clock_source_set(osc::ClockType::HF, osc::HF_RCOSC);
-        osc::OSC.perform_switch();
+        osc::OSC.switch_to_hf_rcosc();
     }
     osc::OSC.clock_source_set(osc::ClockType::LF, 0x2);
     osc::OSC.disable_lf_clock_qualifiers();
@@ -61,6 +60,8 @@ fn switch_to_rc_oscillator() {
 pub unsafe fn prepare_deep_sleep() {
     gpio::set_pins_to_default_conf();
 
+    switch_to_rc_oscillator();
+
     prcm::Power::disable_domain(prcm::PowerDomain::CPU);
     prcm::Power::disable_domain(prcm::PowerDomain::RFC);
     prcm::Power::disable_domain(prcm::PowerDomain::Serial);
@@ -69,8 +70,6 @@ pub unsafe fn prepare_deep_sleep() {
 
     prcm::acquire_uldo();
     prcm::force_disable_dma_and_crypto();
-
-    switch_to_rc_oscillator();
 
     aon::AON.set_dcdc_enabled(true);
     aon::AON.jtag_set_enabled(false);

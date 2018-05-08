@@ -5,6 +5,7 @@
 use aux;
 use setup::oscfh;
 use kernel::common::regs::{ReadOnly, ReadWrite};
+use kernel::support;
 
 /*
     The cc26xx chips have two clock sources:
@@ -188,6 +189,27 @@ impl Oscillator {
         }
     }
 
+    pub fn switch_to_hf_xosc(&self) {
+        if self.clock_source_get(ClockType::HF) != HF_XOSC {
+            // Wait for it to stabilize
+            let regs: &DdiRegisters = unsafe { &*self.r_regs };
+            while !regs.stat0.is_set(Stat0::PENDING_SCLK_HF_SWITCHING) {}
+
+            self.perform_switch();
+        }
+    }
+
+    pub fn switch_to_hf_rcosc(&self) {
+        self.clock_source_set(ClockType::HF, HF_RCOSC);
+
+        let regs: &DdiRegisters = unsafe { &*self.r_regs };
+        while !regs.stat0.is_set(Stat0::PENDING_SCLK_HF_SWITCHING) {}
+
+        if self.clock_source_get(ClockType::HF) != HF_RCOSC {
+            self.perform_switch();
+        }
+    }
+
     pub fn perform_switch(&self) {
         unsafe {
             oscfh::source_switch();
@@ -203,7 +225,7 @@ impl Oscillator {
     }
 
     pub fn clock_source_set(&self, clock: ClockType, src: u8) {
-        let wr_regs: &DdiRegisters = unsafe { &*self.wr_regs };
+        let wr_regs: &DdiRegisters = unsafe { &*self.r_regs };
         match clock {
             ClockType::LF => {
                 wr_regs.ctl0.modify(Ctl0::SCLK_LF_SRC_SEL.val(src as u32));

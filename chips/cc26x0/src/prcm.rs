@@ -326,6 +326,12 @@ impl Clock {
         prcm_commit();
     }
 
+    pub fn disable_rfc() {
+        let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
+        regs.rfc_clk_gate.write(ClockGate::CLK_EN::CLEAR);
+        prcm_commit();
+    }
+
     pub fn enable_i2c() {
         let regs: &PrcmRegisters = unsafe { &*PRCM_BASE };
         regs.i2c_clk_gate_run.write(ClockGate::CLK_EN::SET);

@@ -38,6 +38,8 @@ pub struct Ble {
     rfc: &'static rfc::RFCore,
     rx_client: Cell<Option<&'static ble_advertising::RxClient>>,
     tx_client: Cell<Option<&'static ble_advertising::TxClient>>,
+    schedule_powerdown: Cell<bool>,
+    safe_to_deep_sleep: Cell<bool>,
 }
 
 #[allow(unused)]
@@ -61,13 +63,13 @@ impl Ble {
             rfc,
             rx_client: Cell::new(None),
             tx_client: Cell::new(None),
+            schedule_powerdown: Cell::new(false),
+            safe_to_deep_sleep: Cell::new(true),
         }
     }
 
-    pub fn configure(&self) {
-        if self.rfc.current_mode() == Some(rfc::RfcMode::BLE) {
-            return;
-        }
+    pub fn power_up(&self) {
+        self.safe_to_deep_sleep.set(false);
 
         self.rfc.set_mode(rfc::RfcMode::BLE);
 
@@ -83,12 +85,16 @@ impl Ble {
         self.rfc.enable();
         self.rfc.start_rat();
 
-        osc::OSC.perform_switch();
+        osc::OSC.switch_to_hf_xosc();
 
         unsafe {
             let reg_overrides: u32 = BLE_OVERRIDES.as_mut_ptr() as u32; //(&BLE_OVERRIDES[0] as *const u32) as u32;
             self.rfc.setup(reg_overrides);
         }
+    }
+
+    pub fn power_down(&self) {
+        self.rfc.disable();
     }
 
     /*
@@ -163,7 +169,9 @@ impl Ble {
     }
 
     pub fn advertise(&self, radio_channel: RadioChannel) {
-        self.configure();
+        if self.rfc.current_mode() != Some(rfc::RfcMode::BLE) {
+            self.power_up();
+        }
 
         let channel = match radio_channel {
             RadioChannel::AdvertisingChannel37 => 37,
@@ -185,7 +193,13 @@ impl Ble {
 }
 
 impl rfc::RFCoreClient for Ble {
-    fn command_done(&self) {}
+    fn command_done(&self) {
+        if self.schedule_powerdown.get() {
+            self.power_down();
+            osc::OSC.switch_to_hf_rcosc();
+            self.safe_to_deep_sleep.set(true);
+        }
+    }
 
     fn tx_done(&self) {
         self.tx_client
@@ -201,8 +215,18 @@ impl ble_advertising::BleAdvertisementDriver for Ble {
         len: usize,
         channel: RadioChannel,
     ) -> &'static mut [u8] {
+        if channel == RadioChannel::AdvertisingChannel37 {
+            self.schedule_powerdown.set(false);
+            self.power_up();
+        }
+
         let res = unsafe { self.replace_adv_payload_buffer(buf, len) };
         self.advertise(channel);
+
+        if channel == RadioChannel::AdvertisingChannel39 {
+            self.schedule_powerdown.set(true);
+        }
+
         res
     }
 
@@ -231,10 +255,10 @@ impl peripheral_manager::PowerClient for Ble {
     }
 
     fn lowest_sleep_mode(&self) -> u32 {
-        if self.rfc.current_mode().is_some() {
-            SleepMode::Sleep as u32
-        } else {
+        if self.safe_to_deep_sleep.get() {
             SleepMode::DeepSleep as u32
+        } else {
+            SleepMode::Sleep as u32
         }
     }
 }
