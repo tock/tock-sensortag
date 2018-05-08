@@ -14,7 +14,6 @@ pub struct ControlTable {
     config_array: [DMAConfig; 32]
 }
 
-#[derive(Copy, Clone)]
 struct DMAConfig {
     source_ptr: usize,
     dest_ptr: usize,
