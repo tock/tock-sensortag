@@ -3,7 +3,6 @@
 #![feature(lang_items, compiler_builtins_lib, asm)]
 
 extern crate capsules;
-extern crate compiler_builtins;
 
 extern crate cc26x0;
 extern crate cc26xx;
@@ -23,8 +22,7 @@ const FAULT_RESPONSE: kernel::process::FaultResponse = kernel::process::FaultRes
 
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 2;
-//
-static mut PROCESSES: [Option<kernel::Process<'static>>; NUM_PROCS] = [None, None];
+static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS] = [None, None];
 
 #[link_section = ".app_memory"]
 static mut APP_MEMORY: [u8; 10240] = [0; 10240];
@@ -110,6 +108,7 @@ pub unsafe fn reset_handler() {
             &uart::UART0,
             115200,
             &mut capsules::console::WRITE_BUF,
+            &mut capsules::console::READ_BUF,
             kernel::Grant::create()
         )
     );
