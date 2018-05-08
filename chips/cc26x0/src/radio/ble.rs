@@ -11,6 +11,8 @@ use kernel;
 use radio::ble::ble_commands::BleAdvertise;
 
 use kernel::hil::ble_advertising::{self, RadioChannel};
+use peripheral_manager;
+use chip::SleepMode;
 
 static mut BLE_OVERRIDES: [u32; 7] = [
     0x00364038 /* Synth: Set RTRIM (POTAILRESTRIM) to 6 */,
@@ -134,7 +136,7 @@ impl Ble {
         params.end_time = 0;
         params.end_trigger = 1;
 
-        let pdu: u8 = buf[PACKET_HDR_PDU];
+        let pdu: u8 = buf[PACKET_HDR_PDU] & 0xF;
         let rfc_command_num: u16 = match pdu {
             0x00 => BleAdvertiseCommands::ConnectUndirected,
             0x01 => BleAdvertiseCommands::ConnectDirected,
@@ -218,6 +220,22 @@ impl ble_advertising::BleAdvertisementDriver for Ble {
 impl ble_advertising::BleConfig for Ble {
     fn set_tx_power(&self, _tx_power: u8) -> kernel::ReturnCode {
         kernel::ReturnCode::SUCCESS
+    }
+}
+
+impl peripheral_manager::PowerClient for Ble {
+    fn before_sleep(&self, _sleep_mode: u32) {
+    }
+
+    fn after_wakeup(&self, _sleep_mode: u32) {
+    }
+
+    fn lowest_sleep_mode(&self) -> u32 {
+        if self.rfc.current_mode().is_some() {
+            SleepMode::Sleep as u32
+        } else {
+            SleepMode::DeepSleep as u32
+        }
     }
 }
 
