@@ -119,7 +119,5 @@ impl kernel::Chip for Cc26x0 {
             },
             _ => (),
         }
-
-        //debug_verbose!("Woke up.\r");
     }
 }

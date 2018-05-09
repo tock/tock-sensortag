@@ -5,6 +5,7 @@
 use core::cell::Cell;
 use self::ble_commands::*;
 use osc;
+use rtc;
 use radio::rfc::{self, rfc_commands};
 
 use kernel;
@@ -194,17 +195,24 @@ impl Ble {
 
 impl rfc::RFCoreClient for Ble {
     fn command_done(&self) {
+        for _i in 0..0xFFF {
+            unsafe { rtc::RTC.sync() };
+        }
+
         if self.schedule_powerdown.get() {
             self.power_down();
             osc::OSC.switch_to_hf_rcosc();
+
+            self.schedule_powerdown.set(false);
             self.safe_to_deep_sleep.set(true);
         }
-    }
 
-    fn tx_done(&self) {
         self.tx_client
             .get()
             .map(|client| client.transmit_event(kernel::ReturnCode::SUCCESS));
+    }
+
+    fn tx_done(&self) {
     }
 }
 

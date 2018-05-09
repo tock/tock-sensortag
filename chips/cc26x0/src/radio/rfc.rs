@@ -215,7 +215,7 @@ impl RFCore {
         //bell_regs.rf_cpe_interrupt_enable.set(0xFFFFFFFF);
         bell_regs.rf_cpe_interrupt_enable.write(
             RFCpeInterrupts::INTERNAL_ERROR::SET + RFCpeInterrupts::COMMAND_DONE::SET
-                + RFCpeInterrupts::BOOT_DONE::SET + RFCpeInterrupts::TX_DONE::SET,
+                /*+ RFCpeInterrupts::BOOT_DONE::SET*/ + RFCpeInterrupts::TX_DONE::SET,
         );
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
@@ -265,11 +265,7 @@ impl RFCore {
         self.send(&fs_powerdown)
             .and_then(|_| self.wait(&fs_powerdown))
             .ok()
-            .unwrap_or_else(|| {
-                debug_verbose!("Well shit failed with FS_POWERDOWN\r");
-                panic!("CMDSTA: 0x{:x}\r", bell_regs.cmdsta.get());
-            });
-            //.expect("could not power down the frequency synthesizer in the radio module");
+            .expect("could not power down the frequency synthesizer in the radio module");
 
         // Stop the RAT
         self.stop_rat();
@@ -429,7 +425,6 @@ impl RFCore {
         // Set the command
         bell_regs.cmdr.set(command);
 
-        //debug_verbose!("post_cmdr: 0x{:x}\r", command);
 
         // Wait for ACK from the radio MCU
         let mut timeout: u32 = 0;
@@ -479,7 +474,7 @@ impl RFCore {
             RfcInterrupt::Cpe0 => {
                 let command_done = bell_regs
                     .rf_cpe_interrupt_flags
-                    .is_set(RFCpeInterrupts::LAST_COMMAND_DONE);
+                    .is_set(RFCpeInterrupts::COMMAND_DONE);
                 let tx_done = bell_regs
                     .rf_cpe_interrupt_flags
                     .is_set(RFCpeInterrupts::TX_DONE);
