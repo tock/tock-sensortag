@@ -27,7 +27,7 @@ const NUM_PROCS: usize = 2;
 static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS] = [None, None];
 
 #[link_section = ".app_memory"]
-static mut APP_MEMORY: [u8; 11264] = [0; 11264];
+static mut APP_MEMORY: [u8; 10240] = [0; 10240];
 
 pub struct Platform {
     ble_radio: &'static capsules::ble_advertising_driver::BLE<
@@ -103,7 +103,7 @@ pub unsafe fn reset_handler() {
         btn.set_client(button);
     }
 
-    uart::UART0.set_pins(29, 28);
+    uart::UART0.set_pins(3, 2);
 
     let console = static_init!(
         capsules::console::Console<uart::UART>,
@@ -127,8 +127,6 @@ pub unsafe fn reset_handler() {
         [&'static gpio::GPIOPin; 26],
         [
             &gpio::PORT[1],
-            &gpio::PORT[2],
-            &gpio::PORT[3],
             &gpio::PORT[5],
             &gpio::PORT[6],
             &gpio::PORT[7],
@@ -150,6 +148,8 @@ pub unsafe fn reset_handler() {
             &gpio::PORT[25],
             &gpio::PORT[26],
             &gpio::PORT[27],
+            &gpio::PORT[28],
+            &gpio::PORT[29],
             &gpio::PORT[30],
             &gpio::PORT[31]
         ]

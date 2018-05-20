@@ -17,21 +17,21 @@ struct DMARegisters {
     cfg: WriteOnly<u32, Config::Register>,
     ctrl: ReadWrite<u32>,
     alt_ctrl: ReadOnly<u32>,
-    wait_on_req: ReadOnly<u32,DMAChannelBitfield::Register>,
-    soft_req: WriteOnly<u32,DMAChannelBitfield::Register>,
-    set_burst: ReadWrite<u32,DMAChannelBitfield::Register>,
-    clear_burst: WriteOnly<u32,DMAChannelBitfield::Register>,
-    set_req_mask: ReadWrite<u32,DMAChannelBitfield::Register>,
-    clear_req_mask: WriteOnly<u32,DMAChannelBitfield::Register>,
-    set_channel_en: ReadWrite<u32,DMAChannelBitfield::Register>,
-    clear_channel_en: WriteOnly<u32,DMAChannelBitfield::Register>,
-    set_chnl_pri_alt: ReadWrite<u32,DMAChannelBitfield::Register>,
-    clear_chnl_pri_alt: WriteOnly<u32,DMAChannelBitfield::Register>,
-    set_chnl_priority: ReadWrite<u32,DMAChannelBitfield::Register>,
-    clear_chnl_priority: WriteOnly<u32,DMAChannelBitfield::Register>,
+    wait_on_req: ReadOnly<u32, DMAChannelSelect::Register>,
+    soft_req: WriteOnly<u32, DMAChannelSelect::Register>,
+    set_burst: ReadWrite<u32, DMAChannelSelect::Register>,
+    clear_burst: WriteOnly<u32, DMAChannelSelect::Register>,
+    set_req_mask: ReadWrite<u32, DMAChannelSelect::Register>,
+    clear_req_mask: WriteOnly<u32, DMAChannelSelect::Register>,
+    set_channel_en: ReadWrite<u32, DMAChannelSelect::Register>,
+    clear_channel_en: WriteOnly<u32, DMAChannelSelect::Register>,
+    set_chnl_pri_alt: ReadWrite<u32, DMAChannelSelect::Register>,
+    clear_chnl_pri_alt: WriteOnly<u32, DMAChannelSelect::Register>,
+    set_chnl_priority: ReadWrite<u32, DMAChannelSelect::Register>,
+    clear_chnl_priority: WriteOnly<u32, DMAChannelSelect::Register>,
     error: ReadWrite<u32>,
-    req_done: ReadWrite<u32,DMAChannelBitfield::Register>,
-    done_mask: ReadWrite<u32,DMAChannelBitfield::Register>
+    req_done: ReadWrite<u32, DMAChannelSelect::Register>,
+    done_mask: ReadWrite<u32, DMAChannelSelect::Register>
 }
 
 register_bitfields! [u32,
@@ -48,7 +48,8 @@ register_bitfields! [u32,
     Control [
         BASEPTR OFFSET(10) NUMBITS(22)
     ], 
-    DMAChannelBitfield [
+    
+    DMAChannelSelect [
         SOFTWARE_0 OFFSET(0)  NUMBITS(1),
         UART0_RX   OFFSET(1)  NUMBITS(1),
         UART0_TX   OFFSET(2)  NUMBITS(1),
@@ -69,7 +70,7 @@ register_bitfields! [u32,
         SOFTWARE_2 OFFSET(19) NUMBITS(1),
         SOFTWARE_3 OFFSET(20) NUMBITS(1)
     ],
-
+    
     DMATableControl [
         TRANSFERSIZE OFFSET(4) NUMBITS(10) [],
         ARB OFFSET(14) NUMBITS(4) [
@@ -138,6 +139,8 @@ pub enum DMAWidth {
     Width32Bit = 2,
 }
 
+#[derive(Copy, Clone)]
+#[repr(u8)]
 pub enum DMATransferType{
     DataCopy = 0,
     DataTx = 1,
@@ -164,47 +167,25 @@ struct DMAChannelControl {
     _unused: usize,
 }
 
+/*
 pub struct DMAChannel {
     channel: DMAPeripheral,
     client: Cell<Option<&'static DMAClient>>,
     width: Cell<DMAWidth>,
     enabled: Cell<bool>,
-    xfer_type: Cell<Option<DMATransferType>>
+    xfer_type: Cell<DMATransferType>
 }
+*/
 
+/*
 pub trait DMAClient {
     fn xfer_done(&self, pid: DMAPeripheral);
 }
+*/
 
 pub static mut UDMA: Udma = Udma::new();
 
 static mut DMACTRLTAB: DMAChannelControlTable = DMAChannelControlTable::new();
-
-pub static mut DMA_CHANNELS: [DMAChannel; 21] = [
-    DMAChannel::new(DMAPeripheral::SOFTWARE_0),
-    DMAChannel::new(DMAPeripheral::UART0_RX),
-    DMAChannel::new(DMAPeripheral::UART0_TX),
-    DMAChannel::new(DMAPeripheral::SSP0_RX),
-    DMAChannel::new(DMAPeripheral::SSP0_TX),
-    DMAChannel::new(DMAPeripheral::SSP0_TX), // These two are unused, just here
-    DMAChannel::new(DMAPeripheral::SSP0_TX), // for filler
-    DMAChannel::new(DMAPeripheral::AUX_ADC),
-    DMAChannel::new(DMAPeripheral::AUX_SW),
-    DMAChannel::new(DMAPeripheral::GPT0_A),
-    DMAChannel::new(DMAPeripheral::GPT0_B),
-    DMAChannel::new(DMAPeripheral::GPT1_A),
-    DMAChannel::new(DMAPeripheral::GPT1_B),
-    DMAChannel::new(DMAPeripheral::AON_PROG2),
-    DMAChannel::new(DMAPeripheral::DMA_PROG),
-    DMAChannel::new(DMAPeripheral::AON_RTC),
-    DMAChannel::new(DMAPeripheral::SSP1_RX),
-    DMAChannel::new(DMAPeripheral::SSP1_TX),
-    DMAChannel::new(DMAPeripheral::SOFTWARE_1),
-    DMAChannel::new(DMAPeripheral::SOFTWARE_2),
-    DMAChannel::new(DMAPeripheral::SOFTWARE_3)
-];
-
-
 
 impl DMAChannelControlTable{
     const fn new() -> DMAChannelControlTable{
@@ -265,40 +246,10 @@ impl Udma {
         while !prcm::Power::is_enabled(prcm::PowerDomain::Peripherals) {}
         prcm::Clock::enable_dma();
     }
-}
 
-impl DMAChannel {
-    const fn new(channel: DMAPeripheral) -> DMAChannel {
-        DMAChannel {
-            channel: channel,
-            width: Cell::new(DMAWidth::Width8Bit),
-            client: Cell::new(None),
-            enabled: Cell::new(false),
-            xfer_type: Cell::new(None)
-        }
-    }
-    pub fn enable(
-        &mut self,
-    ) {
-        let regs = unsafe{&*UDMA.regs};
-        //Other stuff
-    }
-
-    /// Initialize()
-    /// Initialize sets up the DMA Channel with the parts of the transfer that
-    /// do not include client information. 
-    /// Pass in the following values:
-    ///   1. `width`: the width of the data block- 8, 16, or 32 bits
-    ///   2. `xfer_type`: the type of transfer, either RX, TX, or data
-    ///   3. `ptr`: the pointer to the data register that's unchanging. This
-    ///      depends on the transfer type:
-    ///     1. `data_xfer`: means that the destination is unchanging, and the
-    ///        buffer that will be passed in is the source
-    ///     2. `data_tx`: means the data is going FROM a buffer to a non-
-    ///        incrementing register
-    ///
-    pub fn initialize(
-        &self, 
+    pub fn initialize_channel(
+        &self,
+        dma_channel: DMAPeripheral, 
         width: DMAWidth, 
         xfer_type: DMATransferType,
         ptr: u32,
@@ -309,19 +260,19 @@ impl DMAChannel {
         // -----------------------
 
         //use `channel` to determine which Channel Control Table row we want to use
-        let channel = unsafe{&mut DMACTRLTAB.config_array[self.channel as usize]};
+        let channel = unsafe{&mut DMACTRLTAB.config_array[dma_channel as usize]};
         //use `width` to determine the 
         channel.control.modify(DMATableControl::PSIZE.val(width as u32));
         
         //per-byte arbitration we'll keep as the default for now
         channel.control.modify(DMATableControl::ARB.val(0));
 
-        match &xfer_type {
+        match xfer_type {
             //a data transfer means the pointer being passed here is a destination
             //and that we're going to increment
             // TODO: variable source/destination increments, right now it's just
             //       the same as the transfer width.
-            data_xfer => {
+            DMATransferType::DataCopy => {
                 channel.dest_ptr  = ptr as usize;
                 channel.control.modify(DMATableControl::SRCINC.val(width as u32));
                 channel.control.modify(DMATableControl::DSTINC.val(width as u32));
@@ -330,7 +281,7 @@ impl DMAChannel {
             //memory (such as a peripheral's TX register)
             //This means that the pointer is the destination, and the destination
             //pointer should not be incremented
-            data_tx   => {
+            DMATransferType::DataTx   => {
                 channel.dest_ptr  = ptr as usize;
                 channel.control.modify(DMATableControl::SRCINC.val(width as u32));
                 channel.control.modify(DMATableControl::DSTINC.val(3));
@@ -339,7 +290,7 @@ impl DMAChannel {
             //as a peripheral's RX register) TO a buffer
             //This means that the supplied pointer is the source, and this source
             //pointer should not be incremented.
-            data_rx   => {
+            DMATransferType::DataRx   => {
                 channel.source_ptr  = ptr as usize;
                 channel.control.modify(DMATableControl::SRCINC.val(3));
                 channel.control.modify(DMATableControl::DSTINC.val(width as u32));
@@ -353,45 +304,29 @@ impl DMAChannel {
         let registers: &DMARegisters = unsafe { &*UDMA.regs };
 
         // Set Bit (Channel N) of CLEARCHNLPRIORITY to set normal priority
-
+        registers.clear_chnl_priority.set(1<<(dma_channel as u32));
         // Set Bit (Channel N) of CLEARCHNLPRIALT to use primary channel control
-
+        registers.clear_chnl_pri_alt.set(1<<(dma_channel as u32));
         // Set Bit (Channel N) of CLEARBURST to use either single or burst requests
-
+        registers.clear_burst.set(1<<(dma_channel as u32));
         // Set Bit (Channel N) of CLEARREQMASK to recognize requests to channel
-
-        
-
-        // ------------------------
-        // Local Struct Mod Section
-        // ------------------------
-
-        self.width.set(width);
-        self.xfer_type.set(Some(xfer_type));
+        registers.clear_req_mask.set(1<<(dma_channel as u32));
     }
 
-    pub fn is_enabled(&self) -> bool {
-        self.enabled.get()
-    }
-
-    pub fn handle_interrupt(&mut self) {
-        //let registers: &DMARegisters = unsafe { &*UDMA.regs };
-        
-        //Disable interrupts
-
-        //Call xfer_done for the client connected to the channel
-        self.client.get().as_mut().map(|client| {
-            client.xfer_done(self.channel);
-        });
+    //This method will run only for software transfers 
+    pub fn start_xfer(&self) {
+        //let registers: &DMARegisters = unsafe { &*self.registers };
     }
 
     pub fn prepare_xfer(
         &self, 
-        bufptr: usize, 
+        dma_channel: DMAPeripheral, 
+        bufptr: usize,
+        xfer_type: DMATransferType,
         len: usize
     ) {
-        let registers: &DMARegisters = unsafe { &*UDMA.regs };
-        let channel = unsafe{&mut DMACTRLTAB.config_array[self.channel as usize]};
+        //let registers: &DMARegisters = unsafe { &*UDMA.regs };
+        let channel = unsafe{&mut DMACTRLTAB.config_array[dma_channel as usize]};
 
         //make sure `len` isn't longer than the buffer length
         //find the maximum value `len` could have for the buffer...
@@ -407,10 +342,10 @@ impl DMAChannel {
         //write either the source or destination pointers depending on transfer
         //type 
 
-        match &self.xfer_type {
-            data_xfer => channel.source_ptr   = bufptr,
-            data_tx   => channel.source_ptr   = bufptr,
-            data_rx   => channel.dest_ptr     = bufptr,    
+        match xfer_type {
+            DMATransferType::DataCopy => channel.source_ptr   = bufptr,
+            DMATransferType::DataTx   => channel.source_ptr   = bufptr,
+            DMATransferType::DataRx   => channel.dest_ptr     = bufptr,    
         };
 
         //write the length of the transfer to the channel config
@@ -419,27 +354,47 @@ impl DMAChannel {
         //Enable the transfer complete interrupt
         //only if this is a software DMA transfer (not necessary if hardware)
 
-        // Store the buffer reference in the TakeCell so it can be returned to
-        // the caller in `handle_interrupt`
-        //self.buffer.replace(buf);
+    }
 
+    pub fn do_xfer(
+        &self, 
+        dma_channel: DMAPeripheral, 
+        bufptr: usize,
+        xfer_type: DMATransferType,
+        len: usize
+    ){
+        self.prepare_xfer(dma_channel, bufptr, xfer_type, len);
+        self.start_xfer();
     }
 
     /// Take the current channel, and check if the REQDONE register has a Bit set
     ///
-    pub fn transfer_complete(&self) -> bool{
+    pub fn transfer_complete(
+        &self,
+        dma_channel: DMAPeripheral
+    ) -> bool{
         let registers: &DMARegisters = unsafe { &*UDMA.regs };
-        //match &self.channel {
-        //    UART0_RX => registers.req_done.is_set(DMAChannelBitfield::UART0_RX),
-        //    UART0_TX => registers.req_done.is_set(DMAChannelBitfield::UART0_TX),
-        //    _ => false,
-        //}   
-        false 
+
+        //there must be a better way to do this with the register interface
+        match dma_channel {
+            DMAPeripheral::UART0_RX => registers.req_done.is_set(DMAChannelSelect::UART0_RX),
+            DMAPeripheral::UART0_TX => registers.req_done.is_set(DMAChannelSelect::UART0_TX),
+            _ => false,
+        }   
     }
 
-    pub fn clear_transfer_flag(&self){
+    pub fn clear_transfer_flag(
+        &self,
+        dma_channel: DMAPeripheral
+    ){
+        let registers: &DMARegisters = unsafe { &*UDMA.regs };
 
+        //there must be a better way to do this with the register interface
+        match dma_channel {
+            DMAPeripheral::UART0_RX => registers.req_done.modify(DMAChannelSelect::UART0_RX.val(1)),
+            DMAPeripheral::UART0_TX => registers.req_done.modify(DMAChannelSelect::UART0_TX.val(1)),
+            _ => (),
+        }
     }
 }
-
 
