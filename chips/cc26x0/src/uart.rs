@@ -8,6 +8,7 @@ use kernel;
 use prcm;
 use cc26xx::gpio;
 use ioc;
+use udma;
 
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
@@ -72,13 +73,17 @@ register_bitfields![
 
 pub struct UART {
     regs: *const Registers,
+
     client: Cell<Option<&'static uart::Client>>,
-    tx_buffer: kernel::common::take_cell::TakeCell<'static, [u8]>,
-    tx_remaining_bytes: Cell<usize>,
-    rx_buffer: kernel::common::take_cell::TakeCell<'static, [u8]>,
-    rx_remaining_bytes: Cell<usize>,
+
+    rx_dma: Cell<Option<&'static udma::DMAChannel>>,
+    rx_len: Cell<usize>,
+
+    tx_dma: Cell<Option<&'static udma::DMAChannel>>,
+    tx_len: Cell<usize>,
+
     tx_pin: Cell<Option<u8>>,
-    rx_pin: Cell<Option<u8>>,
+    rx_pin: Cell<Option<u8>>
 }
 
 pub static mut UART0: UART = UART::new();
@@ -87,14 +92,36 @@ impl UART {
     pub const fn new() -> UART {
         UART {
             regs: UART_BASE as *mut Registers,
+
             client: Cell::new(None),
-            tx_buffer: kernel::common::take_cell::TakeCell::empty(),
-            tx_remaining_bytes: Cell::new(0),
-            rx_buffer: kernel::common::take_cell::TakeCell::empty(),
-            rx_remaining_bytes: Cell::new(0),
+            
+            // these get defined later by `chip.rs`
+            rx_dma: Cell::new(None),
+            tx_dma: Cell::new(None),
+
+            rx_len: Cell::new(0),
+            tx_len: Cell::new(0),
+
             tx_pin: Cell::new(None),
             rx_pin: Cell::new(None),
         }
+    }
+
+    pub fn set_dma(&self, rx_dma: &'static udma::DMAChannel, tx_dma: &'static udma::DMAChannel) {
+        self.rx_dma.set(Some(rx_dma));
+        self.tx_dma.set(Some(tx_dma));
+
+        self.rx_dma.get().map(|rx_dma| {
+            rx_dma.initialize(udma::DMAWidth::Width8Bit,
+                              udma::DMATransferType::DataRx,
+                              UART_BASE as u32);
+        });
+
+        self.tx_dma.get().map(|tx_dma| {
+            tx_dma.initialize(udma::DMAWidth::Width8Bit,
+                              udma::DMATransferType::DataTx,
+                              UART_BASE as u32);
+        });
     }
 
     pub fn set_pins(&self, tx_pin: u8, rx_pin: u8) {
@@ -190,6 +217,18 @@ impl UART {
         let flags: u32 = regs.fr.get();
         // Clear interrupts
         regs.icr.write(Interrupts::ALL_INTERRUPTS::SET);
+
+        self.rx_dma.get().map(|rx_dma|{
+            if rx_dma.transfer_complete() {
+                //do stuff related to a finished rx dma transfer
+            }
+        });
+
+        self.tx_dma.get().map(|tx_dma|{
+            if tx_dma.transfer_complete() {
+                //do stuff related to a finished tx dma transfer
+            }
+        });
     }
 
     pub fn send_byte(&self, c: u8) {
@@ -217,6 +256,28 @@ impl UART {
         let regs = unsafe { &*self.regs };
         !regs.fr.is_set(Flags::RX_FIFO_EMPTY)
     }
+
+    /*
+
+    fn set_tx_dma_pointer_to_buffer(&self) {
+        let regs = unsafe { &*self.regs };
+        self.tx_buffer.map(|tx_buffer| {
+            regs.txd_ptr
+                .set(tx_buffer[self.offset.get()..].as_ptr() as u32);
+        });
+    }
+
+    fn set_rx_dma_pointer_to_buffer(&self) {
+        let regs = unsafe { &*self.regs };
+        self.rx_buffer.map(|rx_buffer| {
+            regs.rxd_ptr
+                .set(rx_buffer[self.offset.get()..].as_ptr() as u32);
+        });
+    }
+
+    */
+
+
 }
 
 impl kernel::hil::uart::UART for UART {
@@ -227,10 +288,13 @@ impl kernel::hil::uart::UART for UART {
     fn init(&self, params: kernel::hil::uart::UARTParams) {
         self.power_and_clock();
         self.disable_interrupts();
-        self.configure(params);
+        self.configure(params); 
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
+        //Section 12.3.10- the UDMA generates an interrupt on the peripheral
+        //The peripheral then needs to check if the interrupt was caused by DMA
+        //by checking the UDMA:REQDONE register.
         if tx_len == 0 {
             return;
         }
