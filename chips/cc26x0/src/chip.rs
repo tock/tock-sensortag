@@ -12,6 +12,7 @@ use uart;
 use kernel;
 use kernel::support;
 use rtc;
+use udma;
 
 pub struct Cc26x0 {
     mpu: (),
@@ -20,6 +21,8 @@ pub struct Cc26x0 {
 
 impl Cc26x0 {
     pub unsafe fn new() -> Cc26x0 {
+        uart::UART0.set_dma(&mut udma::DMA_CHANNELS[udma::DMAPeripheral::UART0_RX as usize], &mut udma::DMA_CHANNELS[udma::DMAPeripheral::UART0_TX as usize]);
+
         Cc26x0 {
             mpu: (),
             // The systick clocks with 48MHz by default
