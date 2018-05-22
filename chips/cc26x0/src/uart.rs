@@ -324,10 +324,11 @@ impl UART {
     }
 
     pub fn set_tx_dma_to_buffer(&self){
+        //we use (self.tx_remaining_bytes.get()-1) which, if it's 0, could be awkward...
         self.tx_buffer.map(|tx_buffer| {
             unsafe{udma::UDMA.prepare_xfer(
                        self.tx_dma.get(), 
-                       tx_buffer[self.tx_remaining_bytes.get()..].as_ptr() as usize,
+                       tx_buffer[(self.tx_remaining_bytes.get()-1)..].as_ptr() as usize,
                        udma::DMATransferType::DataTx,
                        self.tx_remaining_bytes.get())
             };
