@@ -29,7 +29,9 @@ struct DMARegisters {
     clear_chnl_pri_alt: WriteOnly<u32, DMAChannelSelect::Register>,
     set_chnl_priority: ReadWrite<u32, DMAChannelSelect::Register>,
     clear_chnl_priority: WriteOnly<u32, DMAChannelSelect::Register>,
+    _reserved0: [u8; 0xC],
     error: ReadWrite<u32>,
+    _reserved1: [u8; 0x4B4],
     req_done: ReadWrite<u32, DMAChannelSelect::Register>,
     done_mask: ReadWrite<u32, DMAChannelSelect::Register>
 }
@@ -72,6 +74,14 @@ register_bitfields! [u32,
     ],
     
     DMATableControl [
+        MODE OFFSET(0) NUMBITS(3)[
+                          STOP = 0,
+                         BASIC = 1, 
+                          AUTO = 2, 
+                      PINGPONG = 3, 
+            MEM_SCATTER_GATHER = 4, 
+            PER_SCATTER_GATHER = 6
+        ],
         TRANSFERSIZE OFFSET(4) NUMBITS(10) [],
         ARB OFFSET(14) NUMBITS(4) [
             ARB1    = 0,
@@ -252,7 +262,7 @@ impl Udma {
         dma_channel: DMAPeripheral, 
         width: DMAWidth, 
         xfer_type: DMATransferType,
-        ptr: u32,
+        base_loc: u32,
     ) {
 
         // -----------------------
@@ -273,7 +283,7 @@ impl Udma {
             // TODO: variable source/destination increments, right now it's just
             //       the same as the transfer width.
             DMATransferType::DataCopy => {
-                channel.dest_ptr  = ptr as usize;
+                channel.dest_ptr  = base_loc as usize;
                 channel.control.modify(DMATableControl::SRCINC.val(width as u32));
                 channel.control.modify(DMATableControl::DSTINC.val(width as u32));
                          },
@@ -282,7 +292,7 @@ impl Udma {
             //This means that the pointer is the destination, and the destination
             //pointer should not be incremented
             DMATransferType::DataTx   => {
-                channel.dest_ptr  = ptr as usize;
+                channel.dest_ptr  = base_loc as usize;
                 channel.control.modify(DMATableControl::SRCINC.val(width as u32));
                 channel.control.modify(DMATableControl::DSTINC.val(3));
                          },
@@ -291,7 +301,7 @@ impl Udma {
             //This means that the supplied pointer is the source, and this source
             //pointer should not be incremented.
             DMATransferType::DataRx   => {
-                channel.source_ptr  = ptr as usize;
+                channel.source_ptr  = base_loc as usize;
                 channel.control.modify(DMATableControl::SRCINC.val(3));
                 channel.control.modify(DMATableControl::DSTINC.val(width as u32));
                          },    
@@ -301,7 +311,7 @@ impl Udma {
         // UDMA Register Section
         // ------------------------
 
-        let registers: &DMARegisters = unsafe { &*UDMA.regs };
+        let registers: &DMARegisters = unsafe {&*self.regs};
 
         // Set Bit (Channel N) of CLEARCHNLPRIORITY to set normal priority
         registers.clear_chnl_priority.set(1<<(dma_channel as u32));
@@ -314,8 +324,14 @@ impl Udma {
     }
 
     //This method will run only for software transfers 
-    pub fn start_xfer(&self) {
-        //let registers: &DMARegisters = unsafe { &*self.registers };
+    pub fn start_xfer(
+        &self,
+        dma_channel: DMAPeripheral,
+    ) {
+        let registers: &DMARegisters = unsafe { &*UDMA.regs };
+        let channel = unsafe{&mut DMACTRLTAB.config_array[dma_channel as usize]};
+        channel.control.modify(DMATableControl::MODE::BASIC);
+        registers.set_channel_en.set(1<<(dma_channel as u32));
     }
 
     pub fn prepare_xfer(
@@ -342,14 +358,15 @@ impl Udma {
         //write either the source or destination pointers depending on transfer
         //type 
 
-        match xfer_type {
-            DMATransferType::DataCopy => channel.source_ptr   = bufptr,
-            DMATransferType::DataTx   => channel.source_ptr   = bufptr,
-            DMATransferType::DataRx   => channel.dest_ptr     = bufptr,    
-        };
-
         //write the length of the transfer to the channel config
         channel.control.modify(DMATableControl::TRANSFERSIZE.val(len as u32));
+
+        match xfer_type {
+            DMATransferType::DataCopy => {channel.source_ptr   = bufptr;},
+            DMATransferType::DataTx   => {channel.source_ptr   = bufptr;},
+            DMATransferType::DataRx   => {channel.dest_ptr     = bufptr;},    
+        };
+
 
         //Enable the transfer complete interrupt
         //only if this is a software DMA transfer (not necessary if hardware)
@@ -364,7 +381,7 @@ impl Udma {
         len: usize
     ){
         self.prepare_xfer(dma_channel, bufptr, xfer_type, len);
-        self.start_xfer();
+        self.start_xfer(dma_channel);
     }
 
     /// Take the current channel, and check if the REQDONE register has a Bit set
@@ -373,7 +390,7 @@ impl Udma {
         &self,
         dma_channel: DMAPeripheral
     ) -> bool{
-        let registers: &DMARegisters = unsafe { &*UDMA.regs };
+        let registers: &DMARegisters = unsafe {&*self.regs};
 
         //there must be a better way to do this with the register interface
         match dma_channel {
@@ -387,14 +404,8 @@ impl Udma {
         &self,
         dma_channel: DMAPeripheral
     ){
-        let registers: &DMARegisters = unsafe { &*UDMA.regs };
-
-        //there must be a better way to do this with the register interface
-        match dma_channel {
-            DMAPeripheral::UART0_RX => registers.req_done.modify(DMAChannelSelect::UART0_RX.val(1)),
-            DMAPeripheral::UART0_TX => registers.req_done.modify(DMAChannelSelect::UART0_TX.val(1)),
-            _ => (),
-        }
+        let registers: &DMARegisters = unsafe {&*self.regs};
+        registers.req_done.set(1<<(dma_channel as u32));
     }
 }
 

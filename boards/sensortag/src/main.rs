@@ -13,7 +13,7 @@ extern crate cc26xx;
 extern crate kernel;
 
 use cc26xx::{aon, trng};
-use cc26x0::{gpio, radio, rtc, uart, udma};
+use cc26x0::{gpio, radio, rtc, udma, uart};
 
 #[macro_use]
 pub mod io;
@@ -74,12 +74,16 @@ pub unsafe fn reset_handler() {
     // Power on peripheral domain and gpio clocks
     gpio::power_on_gpio();
 
+    //DMA Controller    
+    let udma = &udma::UDMA;
+    udma.enable();
+
     // LEDs
     let led_pins = static_init!(
         [(&'static gpio::GPIOPin, capsules::led::ActivationMode); 2],
         [
-            (&gpio::PORT[10], capsules::led::ActivationMode::ActiveHigh), // Red
-            (&gpio::PORT[15], capsules::led::ActivationMode::ActiveHigh)  // Green
+            (&gpio::PORT[6], capsules::led::ActivationMode::ActiveHigh), // Red
+            (&gpio::PORT[7], capsules::led::ActivationMode::ActiveHigh)  // Green
         ]
     );
     let led = static_init!(
@@ -128,14 +132,14 @@ pub unsafe fn reset_handler() {
         [
             &gpio::PORT[1],
             &gpio::PORT[5],
-            &gpio::PORT[6],
-            &gpio::PORT[7],
             &gpio::PORT[8],
             &gpio::PORT[9],
+            &gpio::PORT[10],
             &gpio::PORT[11],
             &gpio::PORT[12],
             &gpio::PORT[13],
             &gpio::PORT[14],
+            &gpio::PORT[15],
             &gpio::PORT[16],
             &gpio::PORT[17],
             &gpio::PORT[18],
@@ -165,8 +169,6 @@ pub unsafe fn reset_handler() {
     let rtc = &rtc::RTC;
     rtc.start();
 
-    let udma = &udma::UDMA;
-    udma.enable();
 
     let mux_alarm = static_init!(
         capsules::virtual_alarm::MuxAlarm<'static, rtc::Rtc>,
