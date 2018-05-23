@@ -14,6 +14,12 @@ use udma;
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
 
+const UART_MAX_BUFFER_SIZE: u32 = 0x3ff;
+
+const TX_DMA: udma::DMAPeripheral = udma::DMAPeripheral::UART0_TX;
+const RX_DMA: udma::DMAPeripheral = udma::DMAPeripheral::UART0_RX;
+
+
 #[repr(C)]
 struct Registers {
     dr: ReadWrite<u32, Data::Register>,
@@ -39,6 +45,7 @@ register_bitfields![
         DATA OFFSET(0) NUMBITS(8)
     ],
     Errors[
+        ALL_ERRORS     OFFSET(0) NUMBITS(4),
         FRAMING_ERROR  OFFSET(0) NUMBITS(1),
         PARITY_ERROR   OFFSET(1) NUMBITS(1),
         BREAK_ERROR    OFFSET(2) NUMBITS(1),
@@ -92,11 +99,9 @@ pub struct UART {
 
     client: Cell<Option<&'static uart::Client>>,
 
-    rx_dma: Cell<udma::DMAPeripheral>,
     rx_buffer: kernel::common::take_cell::TakeCell<'static, [u8]>,
     rx_remaining_bytes: Cell<usize>,
 
-    tx_dma: Cell<udma::DMAPeripheral>,    
     tx_buffer: kernel::common::take_cell::TakeCell<'static, [u8]>,
     tx_remaining_bytes: Cell<usize>,
 
@@ -115,9 +120,6 @@ impl UART {
 
             client: Cell::new(None),
             
-            rx_dma: Cell::new(udma::DMAPeripheral::UART0_RX),
-            tx_dma: Cell::new(udma::DMAPeripheral::UART0_TX),
-            
             rx_buffer: kernel::common::take_cell::TakeCell::empty(),
             tx_buffer: kernel::common::take_cell::TakeCell::empty(),
             
@@ -132,10 +134,9 @@ impl UART {
     }
 
     pub fn configure_dma(&self) {
-
         unsafe{
         udma::UDMA.initialize_channel(
-            self.tx_dma.get(),
+            TX_DMA,
             udma::DMAWidth::Width8Bit,
             udma::DMATransferType::DataTx,
             UART_BASE as u32
@@ -143,7 +144,7 @@ impl UART {
 
         unsafe{
         udma::UDMA.initialize_channel(
-            self.rx_dma.get(),
+            RX_DMA,
             udma::DMAWidth::Width8Bit,
             udma::DMATransferType::DataRx,
             UART_BASE as u32
@@ -253,6 +254,7 @@ impl UART {
                         Interrupts::OE::SET);
     }
 
+
     pub fn handle_interrupt(&self) {
         let regs = unsafe { &*self.regs };
         // Get status bits
@@ -261,14 +263,15 @@ impl UART {
 
         // Clear interrupts
         regs.icr.write(Interrupts::ALL_INTERRUPTS::SET);
-        regs.rsr_ecr.write(Errors::OVERFLOW_ERROR::SET);
+        regs.rsr_ecr.write(Errors::ALL_ERRORS::SET);
 
         self.disable_interrupts();
 
-        if unsafe{udma::UDMA.transfer_complete(self.tx_dma.get())} {
+        if unsafe{udma::UDMA.transfer_complete(TX_DMA)} {
+            regs.dmactl.modify(DMACtl::TXDMAE::CLEAR);
             //clear the transfer flag
-            unsafe{udma::UDMA.clear_transfer_flag(self.tx_dma.get())};
-            regs.dmactl.write(DMACtl::TXDMAE::CLEAR);
+            unsafe{udma::UDMA.clear_transfer(TX_DMA)};
+
             self.client.get().map(|client| {
                 self.tx_buffer.take().map(|tx_buffer| {
                     client.transmit_complete(
@@ -279,15 +282,16 @@ impl UART {
             });
         }
 
-        if unsafe{udma::UDMA.transfer_complete(self.rx_dma.get())} {
+        if unsafe{udma::UDMA.transfer_complete(RX_DMA)} {
             //clear the receive flag
-            unsafe{udma::UDMA.clear_transfer_flag(self.rx_dma.get())};
-            regs.dmactl.write(DMACtl::RXDMAE::CLEAR);            
+            unsafe{udma::UDMA.clear_transfer(RX_DMA);};
+            regs.dmactl.modify(DMACtl::RXDMAE::CLEAR); 
+
             self.client.get().map(|client| {
                 self.rx_buffer.take().map(|rx_buffer| {
                     client.receive_complete(
                         rx_buffer,
-                        0,
+                        self.rx_remaining_bytes.get(),
                         kernel::hil::uart::Error::CommandComplete,
                     );
                 });
@@ -297,46 +301,49 @@ impl UART {
         self.enable_interrupts();
     }
 
-    pub fn send_byte(&self, c: u8) {
-        // Wait for space in FIFO
-        while !self.tx_ready() {}
-        // Put byte in data register
-        let regs = unsafe { &*self.regs };
-        regs.dr.set(c as u32);
-    }
-
-    pub fn read_byte(&self) -> u8 {
-        // Get byte from RX FIFO
-
-        while !self.rx_ready() {}
-        let regs = unsafe { &*self.regs };
-        regs.dr.read(Data::DATA) as u8
-    }
-
-    pub fn tx_ready(&self) -> bool {
-        let regs = unsafe { &*self.regs };
-        !regs.fr.is_set(Flags::TX_FIFO_FULL)
-    }
-
-    pub fn rx_ready(&self) -> bool {
-        let regs = unsafe { &*self.regs };
-        !regs.fr.is_set(Flags::RX_FIFO_EMPTY)
-    }
-
     pub fn set_tx_dma_to_buffer(&self){
         //we use (self.tx_remaining_bytes.get()-1) which, if it's 0, could be awkward...
-        self.tx_buffer.map(|tx_buffer| {
-            unsafe{udma::UDMA.prepare_xfer(
-                       self.tx_dma.get(), 
-                       tx_buffer[(self.tx_remaining_bytes.get()-1)..].as_ptr() as usize,
-                       udma::DMATransferType::DataTx,
-                       self.tx_remaining_bytes.get())
-            };
-        });
+        if(self.tx_remaining_bytes.get() > 0){
+            self.tx_buffer.map(|tx_buffer| {
+                unsafe{udma::UDMA.prepare_xfer(
+                           TX_DMA, 
+                           tx_buffer[(self.tx_remaining_bytes.get()-1)..].as_ptr() as usize,
+                           udma::DMATransferType::DataTx,
+                           self.tx_remaining_bytes.get()-1)
+                };
+            });
+        }
     }
 
-    pub fn set_rx_dma_pointer_to_buffer(&self){
+    pub fn start_tx(&self){
+        //configure the DMA controller to start
+        unsafe{udma::UDMA.start_xfer(TX_DMA)};
+        //enable the DMA-UART module connection
+        let regs = unsafe { &*self.regs };
+        regs.dmactl.modify(DMACtl::TXDMAE::SET);
+    }
 
+    pub fn set_rx_dma_to_buffer(&self){
+        //you have to pass a pointer to the last element of the buffer array, not the first 
+        //I'm using `self.tx_remaining_bytes.get()-1`, which, if it's 0, could be awkward...
+        if(self.rx_remaining_bytes.get() > 0){
+            self.rx_buffer.map(|rx_buffer| {
+                unsafe{udma::UDMA.prepare_xfer(
+                           RX_DMA, 
+                           rx_buffer[(self.rx_remaining_bytes.get()-1)..].as_ptr() as usize,
+                           udma::DMATransferType::DataRx,
+                           self.rx_remaining_bytes.get()-1)
+                };
+            });
+        }
+    }
+
+    pub fn start_rx(&self){
+        //configure the DMA controller to start
+        unsafe{udma::UDMA.start_xfer(RX_DMA)};
+        //enable the DMA-UART module connection
+        let regs = unsafe { &*self.regs };
+        regs.dmactl.modify(DMACtl::RXDMAE::SET);
     }
 }
 
@@ -353,35 +360,46 @@ impl kernel::hil::uart::UART for UART {
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
         let truncated_len = min(tx_data.len(), tx_len);
+        
+        if truncated_len == 0 {
+            return;
+        }
+        //disable the interrupts until we're ready
+        //self.disable_interrupts();
 
-        self.disable_interrupts();
+        //initialize the UART with the passed settings, and then transfer them
+        //to the DMA controller
+        //is there a particular reason we use tx_len rather than truncated_len?
+        //(as with the NRF52, etc.)
+        self.tx_remaining_bytes.set(truncated_len);
+        self.tx_buffer.replace(tx_data);
+        self.set_tx_dma_to_buffer();
+
+        //After calling this function, the DMA controller will be primed to listen 
+        //for the interrupt signals coming from the UART that normally get routed to the handler
+        //(I think)
+        self.start_tx();
+
+        //enable interrupts to start the transfer for real
+        self.enable_interrupts();
+    }
+
+    fn receive(&self, rx_data: &'static mut [u8], rx_len: usize) {
+        let truncated_len = min(rx_data.len(), rx_len);
+
         if truncated_len == 0 {
             return;
         }
 
-        self.tx_remaining_bytes.set(tx_len);
-        self.tx_buffer.replace(tx_data);
-        self.set_tx_dma_to_buffer();
+        //self.disable_interrupts();
 
-        let regs = unsafe { &*self.regs };
+        self.rx_remaining_bytes.set(truncated_len);
+        self.rx_buffer.replace(rx_data);
+        self.set_rx_dma_to_buffer();
 
-        unsafe{udma::UDMA.start_xfer(self.tx_dma.get())};
+        self.start_rx();
 
-        regs.dmactl.write(DMACtl::TXDMAE::SET);
         self.enable_interrupts();
-    }
 
-    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {
-        if rx_len == 0 {
-            return;
-        }
-
-        for i in 0..rx_len {
-            rx_buffer[i] = self.read_byte();
-        }
-
-        self.client.get().map(move |client| {
-            client.receive_complete(rx_buffer, rx_len, kernel::hil::uart::Error::CommandComplete);
-        });
     }
 }

@@ -323,13 +323,14 @@ impl Udma {
         registers.clear_req_mask.set(1<<(dma_channel as u32));
     }
 
-    //This method will run only for software transfers 
+    
     pub fn start_xfer(
         &self,
         dma_channel: DMAPeripheral,
     ) {
         let registers: &DMARegisters = unsafe { &*UDMA.regs };
         let channel = unsafe{&mut DMACTRLTAB.config_array[dma_channel as usize]};
+        
         channel.control.modify(DMATableControl::MODE::BASIC);
         registers.set_channel_en.set(1<<(dma_channel as u32));
     }
@@ -369,7 +370,7 @@ impl Udma {
 
 
         //Enable the transfer complete interrupt
-        //only if this is a software DMA transfer (not necessary if hardware)
+        //only if this is a software DMA transfer (not necessary if a peripheral transfer)
 
     }
 
@@ -392,19 +393,27 @@ impl Udma {
     ) -> bool{
         let registers: &DMARegisters = unsafe {&*self.regs};
 
+        let reqdone: u32 = registers.req_done.get();
+
+        //ugly but better than the match interface let's be honest
+        return ((reqdone >> (dma_channel as u32)) & 0x1) == 0x1 ; 
+
+        /*
         //there must be a better way to do this with the register interface
         match dma_channel {
             DMAPeripheral::UART0_RX => registers.req_done.is_set(DMAChannelSelect::UART0_RX),
             DMAPeripheral::UART0_TX => registers.req_done.is_set(DMAChannelSelect::UART0_TX),
             _ => false,
         }   
+        */
     }
 
-    pub fn clear_transfer_flag(
+    pub fn clear_transfer(
         &self,
         dma_channel: DMAPeripheral
     ){
         let registers: &DMARegisters = unsafe {&*self.regs};
+        registers.clear_channel_en.set(1<<(dma_channel as u32));
         registers.req_done.set(1<<(dma_channel as u32));
     }
 }

@@ -23,8 +23,8 @@ impl Write for Writer {
             });
         }
         for c in s.bytes() {
-            uart.send_byte(c);
-            while !uart.tx_ready() {}
+            //uart.send_byte(c);
+            //while !uart.tx_ready() {}
         }
         Ok(())
     }
