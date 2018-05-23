@@ -5,7 +5,6 @@
 use aux;
 use setup::oscfh;
 use kernel::common::regs::{ReadOnly, ReadWrite};
-use kernel::support;
 
 /*
     The cc26xx chips have two clock sources:
