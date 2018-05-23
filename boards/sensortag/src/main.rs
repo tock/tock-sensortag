@@ -11,8 +11,8 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::{aon, trng};
-use cc26x0::{gpio, radio, rtc, uart};
+use cc26xx::trng;
+use cc26x0::{aon, gpio, peripherals, power, radio, rtc, uart};
 
 #[macro_use]
 pub mod io;
@@ -67,7 +67,11 @@ pub unsafe fn reset_handler() {
     cc26x0::init();
 
     // Setup AON event defaults
-    aon::AON_EVENT.setup();
+    aon::AON.setup();
+
+    // Setup power management and register all resources to be used
+    power::init();
+    peripherals::init();
 
     // Power on peripheral domain and gpio clocks
     gpio::power_on_gpio();
@@ -185,7 +189,7 @@ pub unsafe fn reset_handler() {
         capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
     );
 
-    trng::TRNG.enable();
+    //trng::TRNG.enable();
     let rng = static_init!(
         capsules::rng::SimpleRng<'static, trng::Trng>,
         capsules::rng::SimpleRng::new(&trng::TRNG, kernel::Grant::create())

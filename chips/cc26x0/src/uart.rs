@@ -8,6 +8,10 @@ use kernel;
 use prcm;
 use cc26xx::gpio;
 use ioc;
+use power::PM;
+use chip;
+
+use peripheral_manager;
 
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
@@ -54,7 +58,8 @@ register_bitfields![
         DIVISOR OFFSET(0) NUMBITS(6) []
     ],
     Flags [
-        TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
+        TX_FIFO_FULL OFFSET(5) NUMBITS(1) [],
+        UART_BUSY OFFSET(3) NUMBITS(1) []
     ],
     Interrupts [
         ALL_INTERRUPTS OFFSET(0) NUMBITS(12) []
@@ -66,6 +71,7 @@ pub struct UART {
     client: Cell<Option<&'static uart::Client>>,
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
+    params: Cell<Option<kernel::hil::uart::UARTParams>>,
 }
 
 pub static mut UART0: UART = UART::new();
@@ -77,6 +83,7 @@ impl UART {
             client: Cell::new(None),
             tx_pin: Cell::new(None),
             rx_pin: Cell::new(None),
+            params: Cell::new(None),
         }
     }
 
@@ -85,7 +92,7 @@ impl UART {
         self.rx_pin.set(Some(rx_pin));
     }
 
-    pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
+    pub fn configure(&self) {
         let tx_pin = match self.tx_pin.get() {
             Some(pin) => pin,
             None => panic!("Tx pin not configured for UART"),
@@ -95,6 +102,8 @@ impl UART {
             Some(pin) => pin,
             None => panic!("Rx pin not configured for UART"),
         };
+
+        let params = self.params.get().expect("No params supplied to uart.");
 
         unsafe {
             /*
@@ -125,12 +134,6 @@ impl UART {
             .write(Control::UART_ENABLE::SET + Control::RX_ENABLE::SET + Control::TX_ENABLE::SET);
     }
 
-    fn power_and_clock(&self) {
-        prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) {}
-        prcm::Clock::enable_uart_run();
-    }
-
     fn set_baud_rate(&self, baud_rate: u32) {
         // Fractional baud rate divider
         let div = (((MCU_CLOCK * 8) / baud_rate) + 1) / 2;
@@ -148,6 +151,11 @@ impl UART {
     fn fifo_disable(&self) {
         let regs = unsafe { &*self.regs };
         regs.lcrh.modify(LineControl::FIFO_ENABLE::CLEAR);
+    }
+
+    fn busy(&self) -> bool {
+        let regs = unsafe { &*self.regs };
+        regs.fr.is_set(Flags::UART_BUSY)
     }
 
     pub fn disable(&self) {
@@ -187,6 +195,10 @@ impl UART {
         let regs = unsafe { &*self.regs };
         !regs.fr.is_set(Flags::TX_FIFO_FULL)
     }
+
+    pub fn set_params(&self, params: kernel::hil::uart::UARTParams) {
+        self.params.set(Some(params));
+    }
 }
 
 impl kernel::hil::uart::UART for UART {
@@ -195,9 +207,14 @@ impl kernel::hil::uart::UART for UART {
     }
 
     fn init(&self, params: kernel::hil::uart::UARTParams) {
-        self.power_and_clock();
+        unsafe {
+            PM.request_resource(prcm::PowerDomain::Serial as u32);
+        }
+        prcm::Clock::enable_uart_run();
+
         self.disable_interrupts();
-        self.configure(params);
+        self.set_params(params);
+        self.configure();
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
@@ -216,4 +233,37 @@ impl kernel::hil::uart::UART for UART {
 
     #[allow(unused)]
     fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
+}
+
+impl peripheral_manager::PowerClient for UART {
+    fn before_sleep(&self, _sleep_mode: u32) {
+        // Wait for all transmissions to occur
+        while self.busy() {}
+
+        unsafe {
+            // Disable the TX & RX pins in order to avoid current leakage
+            self.tx_pin.get().map(|pin| {
+                gpio::PORT[pin as usize].disable();
+            });
+            self.rx_pin.get().map(|pin| {
+                gpio::PORT[pin as usize].disable();
+            });
+
+            PM.release_resource(prcm::PowerDomain::Serial as u32);
+        }
+
+        prcm::Clock::disable_uart_run();
+    }
+
+    fn after_wakeup(&self, _sleep_mode: u32) {
+        unsafe {
+            PM.request_resource(prcm::PowerDomain::Serial as u32);
+        }
+        prcm::Clock::enable_uart_run();
+        self.configure();
+    }
+
+    fn lowest_sleep_mode(&self) -> u32 {
+        chip::SleepMode::DeepSleep as u32
+    }
 }

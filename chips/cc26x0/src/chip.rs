@@ -11,6 +11,28 @@ use timer;
 use uart;
 use kernel;
 use rtc;
+use kernel::support;
+use peripherals;
+use power;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum SleepMode {
+    DeepSleep = 0,
+    Sleep = 1,
+    Active = 2,
+}
+
+impl From<u32> for SleepMode {
+    fn from(n: u32) -> Self {
+        match n {
+            0 => SleepMode::DeepSleep,
+            1 => SleepMode::Sleep,
+            2 => SleepMode::Active,
+            _ => unimplemented!(),
+        }
+    }
+}
 
 pub struct Cc26x0 {
     mpu: (),
@@ -78,6 +100,24 @@ impl kernel::Chip for Cc26x0 {
     }
 
     fn sleep(&self) {
-        unsafe { kernel::support::wfi() };
+        let sleep_mode: SleepMode = SleepMode::from(unsafe { peripherals::M.lowest_sleep_mode() });
+
+        match sleep_mode {
+            SleepMode::DeepSleep => unsafe {
+                peripherals::M.before_sleep(sleep_mode as u32);
+                power::prepare_deep_sleep();
+            },
+            _ => (),
+        }
+
+        unsafe { support::wfi() }
+
+        match sleep_mode {
+            SleepMode::DeepSleep => unsafe {
+                power::prepare_wakeup();
+                peripherals::M.after_wakeup(sleep_mode as u32);
+            },
+            _ => (),
+        }
     }
 }

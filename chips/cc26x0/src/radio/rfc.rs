@@ -92,7 +92,10 @@ const RFC_CMD0: u16 = 0x607;
 const RFC_PING: u16 = 0x406;
 const RFC_BUS_REQUEST: u16 = 0x40E;
 const RFC_START_RAT_TIMER: u16 = 0x080A;
+const RFC_STOP_RAT_TIMER: u16 = 0x0809;
 const RFC_SETUP: u16 = 0x0802;
+const RFC_STOP: u16 = 0x0402;
+const RFC_FS_POWERDOWN: u16 = 0x080D;
 
 /*
     Power masks in order to enable certain clocks in the RFC
@@ -136,6 +139,7 @@ pub struct RFCore {
     pwr_ctl: *mut VolatileCell<u32>,
     client: Cell<Option<&'static RFCoreClient>>,
     mode: Cell<Option<RfcMode>>,
+    rat_offset: Cell<u32>,
 }
 
 /*
@@ -155,6 +159,7 @@ impl RFCore {
             pwr_ctl: RFC_PWR_BASE,
             client: Cell::new(None),
             mode: Cell::new(None),
+            rat_offset: Cell::new(0),
         }
     }
 
@@ -210,7 +215,7 @@ impl RFCore {
         //bell_regs.rf_cpe_interrupt_enable.set(0xFFFFFFFF);
         bell_regs.rf_cpe_interrupt_enable.write(
             RFCpeInterrupts::INTERNAL_ERROR::SET + RFCpeInterrupts::COMMAND_DONE::SET
-                + RFCpeInterrupts::BOOT_DONE::SET + RFCpeInterrupts::TX_DONE::SET,
+                /*+ RFCpeInterrupts::BOOT_DONE::SET*/ + RFCpeInterrupts::TX_DONE::SET,
         );
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
@@ -230,10 +235,54 @@ impl RFCore {
             .expect("could not ping the radio module.");
     }
 
+    pub fn disable(&self) {
+        self.send_direct(&DirectCommand::new(RFC_STOP, 0))
+            .ok()
+            .expect("could not send stop to the radio module.");
+
+        let bell_regs: &RfcBellRegisters = unsafe { &*self.bell_regs };
+
+        // Disable interrupts
+        bell_regs.rf_cpe_interrupt_enable.set(0x00);
+        bell_regs.rf_cpe_interrupt_flags.set(0x00);
+        bell_regs.rf_ack_interrupt_flag.set(0);
+
+        // Send FS_POWERDOWN or the analog components will continue to use power
+        let fs_powerdown: RfcCommandFsPowerdown = RfcCommandFsPowerdown {
+            command_no: RFC_FS_POWERDOWN,
+            status: 0,
+            p_nextop: 0,
+            ratmr: 0,
+            start_trigger: 0,
+            condition: {
+                let mut cond = RfcCondition(0);
+                cond.set_rule(0x01); // COND_NEVER
+                //cond.set_rule(5); // COND_SKIP_ON_FALSE
+                cond
+            },
+        };
+
+        self.send(&fs_powerdown)
+            .and_then(|_| self.wait(&fs_powerdown))
+            .ok()
+            .expect("could not power down the frequency synthesizer in the radio module");
+
+        // Stop the RAT
+        self.stop_rat();
+
+        // Shutdown the RFC
+        prcm::Clock::disable_rfc();
+        prcm::Power::disable_domain(prcm::PowerDomain::RFC);
+
+        // We're disabled, so reset the mode
+        self.mode.set(None);
+    }
+
     pub fn setup(&self, reg_override: u32) {
         let mode = self.mode
             .get()
             .expect("No RF mode selected, can not setup.");
+
         let cmd = RfcCommandRadioSetup {
             command_no: RFC_SETUP,
             status: 0,
@@ -261,12 +310,34 @@ impl RFCore {
         self.send(&cmd)
             .and_then(|_| self.wait(&cmd))
             .ok()
-            .expect("Could not start radio timer.");
+            .expect("Could not enable BLE mode in the radio module.");
     }
 
     pub fn start_rat(&self) {
-        let cmd = RfcCommandStartRat {
+        let cmd = RfcCommandSyncRat {
             command_no: RFC_START_RAT_TIMER,
+            status: 0,
+            next_op: 0,
+            start_time: 0,
+            start_trigger: 0,
+            condition: {
+                let mut cond = RfcCondition(0);
+                cond.set_rule(0x01); // COND_NEVER
+                cond
+            },
+            _reserved: 0,
+            rat0: self.rat_offset.get(),
+        };
+
+        self.send(&cmd)
+            .and_then(|_| self.wait(&cmd))
+            .ok()
+            .expect("Could not start radio timer.");
+    }
+
+    pub fn stop_rat(&self) {
+        let cmd = RfcCommandSyncRat {
+            command_no: RFC_STOP_RAT_TIMER,
             status: 0,
             next_op: 0,
             start_time: 0,
@@ -284,6 +355,9 @@ impl RFCore {
             .and_then(|_| self.wait(&cmd))
             .ok()
             .expect("Could not start radio timer.");
+
+        // Update the RAT offset
+        self.rat_offset.set(cmd.rat0);
     }
 
     /// Wait for a radio operation command (immediate commands, or scheduled).
@@ -351,7 +425,6 @@ impl RFCore {
         // Set the command
         bell_regs.cmdr.set(command);
 
-        //debug_verbose!("post_cmdr: 0x{:x}\r", command);
 
         // Wait for ACK from the radio MCU
         let mut timeout: u32 = 0;
@@ -477,7 +550,7 @@ pub mod rfc_commands {
     }
 
     #[repr(C)]
-    pub struct RfcCommandStartRat {
+    pub struct RfcCommandSyncRat {
         pub command_no: u16,
         pub status: u16,
         pub next_op: u32,
@@ -486,6 +559,16 @@ pub mod rfc_commands {
         pub condition: RfcCondition,
         pub _reserved: u16,
         pub rat0: u32,
+    }
+
+    #[repr(C)]
+    pub struct RfcCommandFsPowerdown {
+        pub command_no: u16,
+        pub status: u16,
+        pub p_nextop: u32,
+        pub ratmr: u32,
+        pub start_trigger: u8,
+        pub condition: RfcCondition,
     }
 
     /* Bitfields used by many commands */

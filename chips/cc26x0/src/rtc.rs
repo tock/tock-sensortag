@@ -2,7 +2,8 @@
 
 use core::cell::Cell;
 use kernel::common::regs::{ReadOnly, ReadWrite};
-use kernel::hil::time::{self, Alarm, Freq32KHz, Time};
+use kernel::hil::time::{self, Alarm, Time};
+use kernel::hil::time::Frequency;
 
 #[repr(C)]
 pub struct RtcRegisters {
@@ -26,7 +27,7 @@ pub struct RtcRegisters {
 
     // A read request to the sync register will not return
     // until all outstanding writes have properly propagated to the RTC domain
-    sync: ReadOnly<u32>,
+    sync: ReadWrite<u32>,
 }
 
 register_bitfields![
@@ -76,6 +77,7 @@ impl Rtc {
     pub fn start(&self) {
         let regs: &RtcRegisters = unsafe { &*self.regs };
         regs.ctl.write(Control::ENABLE::SET);
+        regs.ctl.modify(Control::COMB_EV_MASK.val(0b10));
 
         regs.sync.get();
     }
@@ -87,7 +89,12 @@ impl Rtc {
         regs.sync.get();
     }
 
-    fn read_counter(&self) -> u32 {
+    pub fn sync(&self) {
+        let regs: &RtcRegisters = unsafe { &*self.regs };
+        regs.sync.get();
+    }
+
+    pub fn read_counter(&self) -> u32 {
         let regs: &RtcRegisters = unsafe { &*self.regs };
 
         /*
@@ -138,8 +145,19 @@ impl Rtc {
     }
 }
 
+pub struct RtcFreq(());
+
+impl Frequency for RtcFreq {
+    // The RTC Frequency is tuned, as there is exactly 0xFFFF (64kHz)
+    // subsec increments to reach a second, this yields the correct
+    // `tics` to set the comparator correctly.
+    fn frequency() -> u32 {
+        0xFFFF
+    }
+}
+
 impl Time for Rtc {
-    type Frequency = Freq32KHz;
+    type Frequency = RtcFreq;
 
     fn disable(&self) {
         let regs: &RtcRegisters = unsafe { &*self.regs };
