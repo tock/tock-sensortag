@@ -133,22 +133,20 @@ impl UART {
         }
     }
 
-    pub fn configure_dma(&self) {
-        unsafe{
+    pub unsafe fn configure_dma(&self) {
         udma::UDMA.initialize_channel(
             TX_DMA,
             udma::DMAWidth::Width8Bit,
             udma::DMATransferType::DataTx,
             UART_BASE as u32
-        )};
+        );
 
-        unsafe{
         udma::UDMA.initialize_channel(
             RX_DMA,
             udma::DMAWidth::Width8Bit,
             udma::DMATransferType::DataRx,
             UART_BASE as u32
-        )};     
+        );   
     }
 
     pub fn set_pins(&self, tx_pin: u8, rx_pin: u8) {
@@ -191,7 +189,7 @@ impl UART {
 
         self.fifo_enable();
 
-        self.configure_dma();
+        unsafe{self.configure_dma()};
 
         // Enable UART, RX and TX
         regs.ctl
@@ -267,7 +265,9 @@ impl UART {
 
         self.disable_interrupts();
 
-        if unsafe{udma::UDMA.transfer_complete(TX_DMA)} {
+        let tx_transfer_complete = unsafe{udma::UDMA.transfer_complete(TX_DMA)};
+        
+        if tx_transfer_complete {
             regs.dmactl.modify(DMACtl::TXDMAE::CLEAR);
             //clear the transfer flag
             unsafe{udma::UDMA.clear_transfer(TX_DMA)};
@@ -282,7 +282,9 @@ impl UART {
             });
         }
 
-        if unsafe{udma::UDMA.transfer_complete(RX_DMA)} {
+        let rx_transfer_complete = unsafe{udma::UDMA.transfer_complete(RX_DMA)};
+
+        if rx_transfer_complete {
             //clear the receive flag
             unsafe{udma::UDMA.clear_transfer(RX_DMA);};
             regs.dmactl.modify(DMACtl::RXDMAE::CLEAR); 
@@ -305,7 +307,7 @@ impl UART {
         //we use (self.tx_remaining_bytes.get()-1) which, if it's 0, could be awkward...
         if(self.tx_remaining_bytes.get() > 0){
             self.tx_buffer.map(|tx_buffer| {
-                unsafe{udma::UDMA.prepare_xfer(
+                unsafe{udma::UDMA.prepare_transfer(
                            TX_DMA, 
                            tx_buffer[(self.tx_remaining_bytes.get()-1)..].as_ptr() as usize,
                            udma::DMATransferType::DataTx,
@@ -317,7 +319,7 @@ impl UART {
 
     pub fn start_tx(&self){
         //configure the DMA controller to start
-        unsafe{udma::UDMA.start_xfer(TX_DMA)};
+        unsafe{udma::UDMA.start_transfer(TX_DMA)};
         //enable the DMA-UART module connection
         let regs = unsafe { &*self.regs };
         regs.dmactl.modify(DMACtl::TXDMAE::SET);
@@ -328,7 +330,7 @@ impl UART {
         //I'm using `self.tx_remaining_bytes.get()-1`, which, if it's 0, could be awkward...
         if(self.rx_remaining_bytes.get() > 0){
             self.rx_buffer.map(|rx_buffer| {
-                unsafe{udma::UDMA.prepare_xfer(
+                unsafe{udma::UDMA.prepare_transfer(
                            RX_DMA, 
                            rx_buffer[(self.rx_remaining_bytes.get()-1)..].as_ptr() as usize,
                            udma::DMATransferType::DataRx,
@@ -340,7 +342,7 @@ impl UART {
 
     pub fn start_rx(&self){
         //configure the DMA controller to start
-        unsafe{udma::UDMA.start_xfer(RX_DMA)};
+        unsafe{udma::UDMA.start_transfer(RX_DMA)};
         //enable the DMA-UART module connection
         let regs = unsafe { &*self.regs };
         regs.dmactl.modify(DMACtl::RXDMAE::SET);

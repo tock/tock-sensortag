@@ -183,7 +183,7 @@ pub struct DMAChannel {
     client: Cell<Option<&'static DMAClient>>,
     width: Cell<DMAWidth>,
     enabled: Cell<bool>,
-    xfer_type: Cell<DMATransferType>
+    transfer_type: Cell<DMATransferType>
 }
 */
 
@@ -261,7 +261,7 @@ impl Udma {
         &self,
         dma_channel: DMAPeripheral, 
         width: DMAWidth, 
-        xfer_type: DMATransferType,
+        transfer_type: DMATransferType,
         base_loc: u32,
     ) {
 
@@ -277,7 +277,7 @@ impl Udma {
         //per-byte arbitration we'll keep as the default for now
         channel.control.modify(DMATableControl::ARB.val(0));
 
-        match xfer_type {
+        match transfer_type {
             //a data transfer means the pointer being passed here is a destination
             //and that we're going to increment
             // TODO: variable source/destination increments, right now it's just
@@ -324,7 +324,7 @@ impl Udma {
     }
 
     
-    pub fn start_xfer(
+    pub fn start_transfer(
         &self,
         dma_channel: DMAPeripheral,
     ) {
@@ -335,11 +335,11 @@ impl Udma {
         registers.set_channel_en.set(1<<(dma_channel as u32));
     }
 
-    pub fn prepare_xfer(
+    pub fn prepare_transfer(
         &self, 
         dma_channel: DMAPeripheral, 
         bufptr: usize,
-        xfer_type: DMATransferType,
+        transfer_type: DMATransferType,
         len: usize
     ) {
         //let registers: &DMARegisters = unsafe { &*UDMA.regs };
@@ -362,7 +362,7 @@ impl Udma {
         //write the length of the transfer to the channel config
         channel.control.modify(DMATableControl::TRANSFERSIZE.val(len as u32));
 
-        match xfer_type {
+        match transfer_type {
             DMATransferType::DataCopy => {channel.source_ptr   = bufptr;},
             DMATransferType::DataTx   => {channel.source_ptr   = bufptr;},
             DMATransferType::DataRx   => {channel.dest_ptr     = bufptr;},    
@@ -374,15 +374,15 @@ impl Udma {
 
     }
 
-    pub fn do_xfer(
+    pub fn do_transfer(
         &self, 
         dma_channel: DMAPeripheral, 
         bufptr: usize,
-        xfer_type: DMATransferType,
+        transfer_type: DMATransferType,
         len: usize
     ){
-        self.prepare_xfer(dma_channel, bufptr, xfer_type, len);
-        self.start_xfer(dma_channel);
+        self.prepare_transfer(dma_channel, bufptr, transfer_type, len);
+        self.start_transfer(dma_channel);
     }
 
     /// Take the current channel, and check if the REQDONE register has a Bit set
