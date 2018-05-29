@@ -11,6 +11,7 @@ extern crate kernel;
 #[macro_use]
 extern crate bitfield;
 
+pub mod aon;
 pub mod chip;
 pub mod crt1;
 pub mod uart;
@@ -26,6 +27,12 @@ pub mod prcm;
 pub mod rtc;
 pub mod gpio;
 pub mod udma;
+pub mod tmp;
+
+pub mod power;
+pub mod peripherals;
+pub mod power_manager;
+pub mod peripheral_manager;
 
 // Since the setup code is converted from C -> Rust, we
 // ignore side effects from the conversion (unused vars & muts).

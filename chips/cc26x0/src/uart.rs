@@ -5,11 +5,13 @@ use kernel::hil::uart;
 use core::cell::Cell;
 use core::cmp::min;
 use kernel;
-
 use prcm;
 use cc26xx::gpio;
 use ioc;
 use udma;
+use power::PM;
+use chip;
+use peripheral_manager;
 
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
@@ -73,7 +75,8 @@ register_bitfields![
     ],
     Flags [
         RX_FIFO_EMPTY OFFSET(4) NUMBITS(1) [],
-        TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
+        TX_FIFO_FULL OFFSET(5) NUMBITS(1) [],
+        UART_BUSY OFFSET(3) NUMBITS(1) []
     ],
     Interrupts [
         ALL_INTERRUPTS OFFSET(0) NUMBITS(12) [],
@@ -108,7 +111,7 @@ pub struct UART {
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
 
-    offset: Cell<usize>,
+    params: Cell<Option<kernel::hil::uart::UARTParams>>,
 }
 
 pub static mut UART0: UART = UART::new();
@@ -129,26 +132,24 @@ impl UART {
             rx_pin: Cell::new(None),
             tx_pin: Cell::new(None),
 
-            offset: Cell::new(0),
+            params: Cell::new(None),
         }
     }
 
-    pub fn configure_dma(&self) {
-        unsafe{
+    pub unsafe fn configure_dma(&self) {
         udma::UDMA.initialize_channel(
             TX_DMA,
             udma::DMAWidth::Width8Bit,
             udma::DMATransferType::DataTx,
             UART_BASE as u32
-        )};
+        );
 
-        unsafe{
         udma::UDMA.initialize_channel(
             RX_DMA,
             udma::DMAWidth::Width8Bit,
             udma::DMATransferType::DataRx,
             UART_BASE as u32
-        )};     
+        );   
     }
 
     pub fn set_pins(&self, tx_pin: u8, rx_pin: u8) {
@@ -156,7 +157,7 @@ impl UART {
         self.rx_pin.set(Some(rx_pin));
     }
 
-    pub fn configure(&self, params: kernel::hil::uart::UARTParams) {
+    pub fn configure(&self) {
         let tx_pin = match self.tx_pin.get() {
             Some(pin) => pin,
             None => panic!("Tx pin not configured for UART"),
@@ -166,6 +167,8 @@ impl UART {
             Some(pin) => pin,
             None => panic!("Rx pin not configured for UART"),
         };
+
+        let params = self.params.get().expect("No params supplied to uart.");
 
         unsafe {
             /*
@@ -191,17 +194,11 @@ impl UART {
 
         self.fifo_enable();
 
-        self.configure_dma();
+        unsafe{self.configure_dma()};
 
         // Enable UART, RX and TX
         regs.ctl
             .write(Control::UART_ENABLE::SET + Control::RX_ENABLE::SET + Control::TX_ENABLE::SET);
-    }
-
-    fn power_and_clock(&self) {
-        prcm::Power::enable_domain(prcm::PowerDomain::Serial);
-        while !prcm::Power::is_enabled(prcm::PowerDomain::Serial) {}
-        prcm::Clock::enable_uart_run();
     }
 
     fn set_baud_rate(&self, baud_rate: u32) {
@@ -221,6 +218,11 @@ impl UART {
     fn fifo_disable(&self) {
         let regs = unsafe { &*self.regs };
         regs.lcrh.modify(LineControl::FIFO_ENABLE::CLEAR);
+    }
+
+    fn busy(&self) -> bool {
+        let regs = unsafe { &*self.regs };
+        regs.fr.is_set(Flags::UART_BUSY)
     }
 
     pub fn disable(&self) {
@@ -267,7 +269,9 @@ impl UART {
 
         self.disable_interrupts();
 
-        if unsafe{udma::UDMA.transfer_complete(TX_DMA)} {
+        let tx_transfer_complete = unsafe{udma::UDMA.transfer_complete(TX_DMA)};
+        
+        if tx_transfer_complete {
             regs.dmactl.modify(DMACtl::TXDMAE::CLEAR);
             //clear the transfer flag
             unsafe{udma::UDMA.clear_transfer(TX_DMA)};
@@ -282,7 +286,9 @@ impl UART {
             });
         }
 
-        if unsafe{udma::UDMA.transfer_complete(RX_DMA)} {
+        let rx_transfer_complete = unsafe{udma::UDMA.transfer_complete(RX_DMA)};
+
+        if rx_transfer_complete {
             //clear the receive flag
             unsafe{udma::UDMA.clear_transfer(RX_DMA);};
             regs.dmactl.modify(DMACtl::RXDMAE::CLEAR); 
@@ -305,7 +311,7 @@ impl UART {
         //we use (self.tx_remaining_bytes.get()-1) which, if it's 0, could be awkward...
         if(self.tx_remaining_bytes.get() > 0){
             self.tx_buffer.map(|tx_buffer| {
-                unsafe{udma::UDMA.prepare_xfer(
+                unsafe{udma::UDMA.prepare_transfer(
                            TX_DMA, 
                            tx_buffer[(self.tx_remaining_bytes.get()-1)..].as_ptr() as usize,
                            udma::DMATransferType::DataTx,
@@ -317,7 +323,7 @@ impl UART {
 
     pub fn start_tx(&self){
         //configure the DMA controller to start
-        unsafe{udma::UDMA.start_xfer(TX_DMA)};
+        unsafe{udma::UDMA.start_transfer(TX_DMA)};
         //enable the DMA-UART module connection
         let regs = unsafe { &*self.regs };
         regs.dmactl.modify(DMACtl::TXDMAE::SET);
@@ -328,7 +334,7 @@ impl UART {
         //I'm using `self.tx_remaining_bytes.get()-1`, which, if it's 0, could be awkward...
         if(self.rx_remaining_bytes.get() > 0){
             self.rx_buffer.map(|rx_buffer| {
-                unsafe{udma::UDMA.prepare_xfer(
+                unsafe{udma::UDMA.prepare_transfer(
                            RX_DMA, 
                            rx_buffer[(self.rx_remaining_bytes.get()-1)..].as_ptr() as usize,
                            udma::DMATransferType::DataRx,
@@ -340,10 +346,14 @@ impl UART {
 
     pub fn start_rx(&self){
         //configure the DMA controller to start
-        unsafe{udma::UDMA.start_xfer(RX_DMA)};
+        unsafe{udma::UDMA.start_transfer(RX_DMA)};
         //enable the DMA-UART module connection
         let regs = unsafe { &*self.regs };
         regs.dmactl.modify(DMACtl::RXDMAE::SET);
+    }
+
+    pub fn set_params(&self, params: kernel::hil::uart::UARTParams) {
+        self.params.set(Some(params));
     }
 }
 
@@ -353,9 +363,14 @@ impl kernel::hil::uart::UART for UART {
     }
 
     fn init(&self, params: kernel::hil::uart::UARTParams) {
-        self.power_and_clock();
+        unsafe {
+            PM.request_resource(prcm::PowerDomain::Serial as u32);
+        }
+        prcm::Clock::enable_uart_run();
+
         self.disable_interrupts();
-        self.configure(params); 
+        self.set_params(params);
+        self.configure(); 
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
@@ -371,7 +386,7 @@ impl kernel::hil::uart::UART for UART {
         //to the DMA controller
         //is there a particular reason we use tx_len rather than truncated_len?
         //(as with the NRF52, etc.)
-        self.tx_remaining_bytes.set(truncated_len);
+        self.tx_remaining_bytes.set(tx_len);
         self.tx_buffer.replace(tx_data);
         self.set_tx_dma_to_buffer();
 
@@ -393,13 +408,45 @@ impl kernel::hil::uart::UART for UART {
 
         //self.disable_interrupts();
 
-        self.rx_remaining_bytes.set(truncated_len);
+        self.rx_remaining_bytes.set(rx_len);
         self.rx_buffer.replace(rx_data);
         self.set_rx_dma_to_buffer();
 
         self.start_rx();
 
         self.enable_interrupts();
+    } 
+}
 
+impl peripheral_manager::PowerClient for UART {
+    fn before_sleep(&self, _sleep_mode: u32) {
+        // Wait for all transmissions to occur
+        while self.busy() {}
+
+        unsafe {
+            // Disable the TX & RX pins in order to avoid current leakage
+            self.tx_pin.get().map(|pin| {
+                gpio::PORT[pin as usize].disable();
+            });
+            self.rx_pin.get().map(|pin| {
+                gpio::PORT[pin as usize].disable();
+            });
+
+            PM.release_resource(prcm::PowerDomain::Serial as u32);
+        }
+
+        prcm::Clock::disable_uart_run();
+    }
+
+    fn after_wakeup(&self, _sleep_mode: u32) {
+        unsafe {
+            PM.request_resource(prcm::PowerDomain::Serial as u32);
+        }
+        prcm::Clock::enable_uart_run();
+        self.configure();
+    }
+
+    fn lowest_sleep_mode(&self) -> u32 {
+        chip::SleepMode::DeepSleep as u32
     }
 }
