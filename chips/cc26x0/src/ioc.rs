@@ -189,6 +189,13 @@ impl IocfgPin {
         let pin_ioc = &regs.iocfg[self.pin];
         pin_ioc.modify(IoConfiguration::EDGE_IRQ_EN::CLEAR);
     }
+
+    pub fn low_leakage_mode(&self) {
+        let regs: &IocRegisters = unsafe { &*IOC_BASE };
+        let pin_ioc = &regs.iocfg[self.pin];
+        pin_ioc.set(0);
+        self.set_input_mode(hil::gpio::InputMode::PullNone);
+    }
 }
 
 pub static IOCFG: [IocfgPin; 32] = [

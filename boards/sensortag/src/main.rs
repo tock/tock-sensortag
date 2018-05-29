@@ -3,7 +3,6 @@
 #![feature(lang_items, compiler_builtins_lib, asm)]
 
 extern crate capsules;
-extern crate compiler_builtins;
 
 extern crate cc26x0;
 extern crate cc26xx;
@@ -12,8 +11,8 @@ extern crate cc26xx;
 #[macro_use(debug, debug_gpio, static_init)]
 extern crate kernel;
 
-use cc26xx::{aon, trng};
-use cc26x0::{gpio, radio, rtc, udma, uart};
+use cc26xx::trng;
+use cc26x0::{aon, gpio, peripherals, power, radio, rtc, udma uart};
 
 #[macro_use]
 pub mod io;
@@ -23,7 +22,7 @@ const FAULT_RESPONSE: kernel::process::FaultResponse = kernel::process::FaultRes
 
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 2;
-//
+
 static mut PROCESSES: [Option<&'static mut kernel::Process<'static>>; NUM_PROCS] = [None, None];
 
 #[link_section = ".app_memory"]
@@ -69,7 +68,11 @@ pub unsafe fn reset_handler() {
     cc26x0::init();
 
     // Setup AON event defaults
-    aon::AON_EVENT.setup();
+    aon::AON.setup();
+
+    // Setup power management and register all resources to be used
+    power::init();
+    peripherals::init();
 
     // Power on peripheral domain and gpio clocks
     gpio::power_on_gpio();
@@ -193,7 +196,7 @@ pub unsafe fn reset_handler() {
         capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
     );
 
-    trng::TRNG.enable();
+    //trng::TRNG.enable();
     let rng = static_init!(
         capsules::rng::SimpleRng<'static, trng::Trng>,
         capsules::rng::SimpleRng::new(&trng::TRNG, kernel::Grant::create())
