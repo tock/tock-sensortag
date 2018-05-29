@@ -302,6 +302,7 @@ impl UART {
                     );
                 });
             });
+            self.rx_remaining_bytes.set(0);
         }
 
         self.enable_interrupts();
@@ -447,6 +448,10 @@ impl peripheral_manager::PowerClient for UART {
     }
 
     fn lowest_sleep_mode(&self) -> u32 {
-        chip::SleepMode::DeepSleep as u32
+        if self.rx_remaining_bytes.get() == 0 {
+            chip::SleepMode::DeepSleep as u32
+        } else {
+            chip::SleepMode::Sleep as u32
+        }
     }
 }
