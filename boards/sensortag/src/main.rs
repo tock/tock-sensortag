@@ -12,7 +12,7 @@ extern crate cc26xx;
 extern crate kernel;
 
 use cc26xx::trng;
-use cc26x0::{aon, gpio, peripherals, power, radio, rtc, udma uart};
+use cc26x0::{aon, gpio, peripherals, power, radio, rtc, udma, uart};
 
 #[macro_use]
 pub mod io;

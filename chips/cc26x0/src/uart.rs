@@ -75,7 +75,7 @@ register_bitfields![
     ],
     Flags [
         RX_FIFO_EMPTY OFFSET(4) NUMBITS(1) [],
-        TX_FIFO_FULL OFFSET(5) NUMBITS(1) []
+        TX_FIFO_FULL OFFSET(5) NUMBITS(1) [],
         UART_BUSY OFFSET(3) NUMBITS(1) []
     ],
     Interrupts [
@@ -110,7 +110,7 @@ pub struct UART {
 
     tx_pin: Cell<Option<u8>>,
     rx_pin: Cell<Option<u8>>,
-    
+
     params: Cell<Option<kernel::hil::uart::UARTParams>>,
 }
 
@@ -369,7 +369,8 @@ impl kernel::hil::uart::UART for UART {
         prcm::Clock::enable_uart_run();
 
         self.disable_interrupts();
-        self.configure(params); 
+        self.set_params(params);
+        self.configure(); 
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
@@ -385,7 +386,7 @@ impl kernel::hil::uart::UART for UART {
         //to the DMA controller
         //is there a particular reason we use tx_len rather than truncated_len?
         //(as with the NRF52, etc.)
-        self.tx_remaining_bytes.set(truncated_len);
+        self.tx_remaining_bytes.set(tx_len);
         self.tx_buffer.replace(tx_data);
         self.set_tx_dma_to_buffer();
 
@@ -400,14 +401,6 @@ impl kernel::hil::uart::UART for UART {
 
     fn receive(&self, rx_data: &'static mut [u8], rx_len: usize) {
         let truncated_len = min(rx_data.len(), rx_len);
-        self.set_params(params);
-        self.configure();
-    }
-
-    fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
-        if tx_len == 0 {
-            return;
-        }
 
         if truncated_len == 0 {
             return;
@@ -415,16 +408,14 @@ impl kernel::hil::uart::UART for UART {
 
         //self.disable_interrupts();
 
-        self.rx_remaining_bytes.set(truncated_len);
+        self.rx_remaining_bytes.set(rx_len);
         self.rx_buffer.replace(rx_data);
         self.set_rx_dma_to_buffer();
 
         self.start_rx();
 
         self.enable_interrupts();
-    }   
-    #[allow(unused)]
-    fn receive(&self, rx_buffer: &'static mut [u8], rx_len: usize) {}
+    } 
 }
 
 impl peripheral_manager::PowerClient for UART {

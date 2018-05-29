@@ -13,7 +13,6 @@ use uart;
 use kernel;
 use rtc;
 use udma;
-use kernel::support;
 use peripherals;
 use power;
 
