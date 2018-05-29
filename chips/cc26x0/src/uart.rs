@@ -385,8 +385,6 @@ impl kernel::hil::uart::UART for UART {
 
         //initialize the UART with the passed settings, and then transfer them
         //to the DMA controller
-        //is there a particular reason we use tx_len rather than truncated_len?
-        //(as with the NRF52, etc.)
         self.tx_remaining_bytes.set(tx_len);
         self.tx_buffer.replace(tx_data);
         self.set_tx_dma_to_buffer();
