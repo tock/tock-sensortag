@@ -308,6 +308,21 @@ impl UART {
         self.enable_interrupts();
     }
 
+    /// Transmits a single byte if the hardware is ready.
+    pub fn send_byte(&self, c: u8) {
+        // Wait for space in FIFO
+        while !self.tx_ready() {}
+        // Put byte in data register
+        let regs = unsafe { &*self.regs };
+        regs.dr.set(c as u32);
+    }
+
+    /// Checks if there is space in the transmit fifo queue.
+    pub fn tx_ready(&self) -> bool {
+        let regs = unsafe { &*self.regs };
+        !regs.fr.is_set(Flags::TX_FIFO_FULL)
+    }
+
     pub fn set_tx_dma_to_buffer(&self){
         //we use (self.tx_remaining_bytes.get()-1) which, if it's 0, could be awkward...
         if(self.tx_remaining_bytes.get() > 0){

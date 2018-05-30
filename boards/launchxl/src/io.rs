@@ -22,24 +22,24 @@ impl Write for Writer {
                 hw_flow_control: false,
             });
         }
-        /*
+        
         for c in s.bytes() {
-            //uart.send_byte(c);
-            //while !uart.tx_ready() {}
-        }*/
+            uart.send_byte(c);
+            while !uart.tx_ready() {}
+        }
         Ok(())
     }
 }
 
 #[macro_export]
 macro_rules! print {
-        ($($arg:tt)*) => (
-            {
-                use core::fmt::write;
-                let writer = &mut $crate::io::WRITER;
-                let _ = write(writer, format_args!($($arg)*));
-            }
-        );
+    ($($arg:tt)*) => (
+        {
+            use core::fmt::write;
+            let writer = &mut $crate::io::WRITER;
+            let _ = write(writer, format_args!($($arg)*));
+        }
+    );
 }
 
 #[macro_export]
