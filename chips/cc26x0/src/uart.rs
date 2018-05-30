@@ -16,6 +16,8 @@ use peripheral_manager;
 pub const UART_BASE: usize = 0x4000_1000;
 pub const MCU_CLOCK: u32 = 48_000_000;
 
+
+#[allow(unused)]
 const UART_MAX_BUFFER_SIZE: u32 = 0x3ff;
 
 const TX_DMA: udma::DMAPeripheral = udma::DMAPeripheral::UART0_TX;
@@ -325,7 +327,7 @@ impl UART {
 
     pub fn set_tx_dma_to_buffer(&self){
         //we use (self.tx_remaining_bytes.get()-1) which, if it's 0, could be awkward...
-        if(self.tx_remaining_bytes.get() > 0){
+        if self.tx_remaining_bytes.get() > 0 {
             self.tx_buffer.map(|tx_buffer| {
                 unsafe{udma::UDMA.prepare_transfer(
                            TX_DMA, 
@@ -348,7 +350,7 @@ impl UART {
     pub fn set_rx_dma_to_buffer(&self){
         //you have to pass a pointer to the last element of the buffer array, not the first 
         //I'm using `self.tx_remaining_bytes.get()-1`, which, if it's 0, could be awkward...
-        if(self.rx_remaining_bytes.get() > 0){
+        if self.rx_remaining_bytes.get() > 0 {
             self.rx_buffer.map(|rx_buffer| {
                 unsafe{udma::UDMA.prepare_transfer(
                            RX_DMA, 

@@ -12,7 +12,6 @@ use timer;
 use uart;
 use kernel;
 use rtc;
-use udma;
 use peripherals;
 use power;
 

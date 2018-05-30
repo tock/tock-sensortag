@@ -2,11 +2,7 @@
 /// # Micro Direct Memory Access for the TI CC26x0 Microcontroller
 ///
 
-//use core::{cmp};
-use core::cell::Cell;
 use kernel::common::regs::{ReadOnly, ReadWrite, WriteOnly};
-//use kernel::common::take_cell::TakeCell;
-use kernel::ReturnCode;
 use prcm;
 
 pub const UDMA_BASE: usize = 0x4002_0000;
