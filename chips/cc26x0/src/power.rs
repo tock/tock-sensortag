@@ -3,7 +3,7 @@ use power_manager::{PowerManager, Resource, ResourceManager};
 use prcm::{Power, PowerDomain};
 use cortexm3::scb;
 
-use aux;
+use aux_wuc;
 use aon;
 use prcm;
 use setup::recharge;
@@ -79,12 +79,12 @@ pub unsafe fn prepare_deep_sleep() {
     aon::AON.lock_io_pins(true);
 
     // We need to allow the aux domain to sleep when we enter sleep mode
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::AllowSleep);
+    aux_wuc::AUX_CTL.wakeup_event(aux_wuc::WakeupMode::AllowSleep);
 
     // TODO: if we power off the aux completely we prevent the second wakeup,
     //       and cause a hard-fault during the next access to the AUX domain/bus (eg. osc control)
     //       Investigate this further, as the AUX domain draws ~70uA in sleep
-    //aux::AUX_CTL.power_off();
+    //aux_wuc::AUX_CTL.power_off();
 
     while aon::AON.aux_is_on() {}
 
@@ -104,7 +104,7 @@ pub unsafe fn prepare_wakeup() {
     rtc::RTC.sync();
 
     // We're ready to allow the auxilliary domain to wake up once it's needed.
-    aux::AUX_CTL.wakeup_event(aux::WakeupMode::WakeUp);
+    aux_wuc::AUX_CTL.wakeup_event(aux_wuc::WakeupMode::WakeUp);
 
     // If we were using the uLDO power to supply the peripherals, we can safely disable it now
     prcm::release_uldo();

@@ -2,7 +2,7 @@
 //!
 //!
 
-use aux;
+use aux_wuc;
 use setup::oscfh;
 use kernel::common::regs::{ReadOnly, ReadWrite};
 
@@ -149,8 +149,8 @@ impl Oscillator {
     }
 
     pub fn configure(&self) {
-        aux::AUX_CTL.activate_clock(aux::AuxClock::OscillatorControl);
-        aux::AUX_CTL.activate_clock(aux::AuxClock::Semaphores);
+        aux_wuc::AUX_CTL.activate_clock(aux_wuc::AuxClock::OscillatorControl);
+        aux_wuc::AUX_CTL.activate_clock(aux_wuc::AuxClock::Semaphores);
     }
 
     #[allow(unused)]
