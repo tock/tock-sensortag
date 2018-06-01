@@ -158,9 +158,6 @@ pub struct Udma {
 }
 
 
-//
-//
-//
 #[repr(align(1024))]
 pub struct DMAChannelControlTable {
     config_array: [DMAChannelControl; 32]
@@ -172,22 +169,6 @@ struct DMAChannelControl {
     control: ReadWrite<u32,DMATableControl::Register>,
     _unused: usize,
 }
-
-/*
-pub struct DMAChannel {
-    channel: DMAPeripheral,
-    client: Cell<Option<&'static DMAClient>>,
-    width: Cell<DMAWidth>,
-    enabled: Cell<bool>,
-    transfer_type: Cell<DMATransferType>
-}
-*/
-
-/*
-pub trait DMAClient {
-    fn xfer_done(&self, pid: DMAPeripheral);
-}
-*/
 
 pub static mut UDMA: Udma = Udma::new();
 
@@ -341,20 +322,6 @@ impl Udma {
         //let registers: &DMARegisters = unsafe { &*UDMA.regs };
         let channel = unsafe{&mut DMACTRLTAB.config_array[dma_channel as usize]};
 
-        //make sure `len` isn't longer than the buffer length
-        //find the maximum value `len` could have for the buffer...
-        //let maxlen = buf.len() / match self.width.get() {
-        //        DMAWidth::Width8Bit /*  DMA is acting on bytes     */ => 1,
-        //        DMAWidth::Width16Bit /* DMA is acting on halfwords */ => 2,
-        //        DMAWidth::Width32Bit /* DMA is acting on words     */ => 4,
-        //    };
-
-        //...and set it to this if `len` is larger than the max value
-        //len = cmp::min(len, maxlen);
-
-        //write either the source or destination pointers depending on transfer
-        //type 
-
         //write the length of the transfer to the channel config
         channel.control.modify(DMATableControl::TRANSFERSIZE.val(len as u32));
 
@@ -393,15 +360,6 @@ impl Udma {
 
         //ugly but better than the match interface let's be honest
         return ((reqdone >> (dma_channel as u32)) & 0x1) == 0x1 ; 
-
-        /*
-        //there must be a better way to do this with the register interface
-        match dma_channel {
-            DMAPeripheral::UART0_RX => registers.req_done.is_set(DMAChannelSelect::UART0_RX),
-            DMAPeripheral::UART0_TX => registers.req_done.is_set(DMAChannelSelect::UART0_TX),
-            _ => false,
-        }   
-        */
     }
 
     pub fn clear_transfer(

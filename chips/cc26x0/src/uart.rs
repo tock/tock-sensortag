@@ -388,7 +388,7 @@ impl kernel::hil::uart::UART for UART {
 
         self.disable_interrupts();
         self.set_params(params);
-        self.configure(); 
+        self.configure();
     }
 
     fn transmit(&self, tx_data: &'static mut [u8], tx_len: usize) {
@@ -462,11 +462,7 @@ impl peripheral_manager::PowerClient for UART {
         self.configure();
     }
 
-    fn lowest_sleep_mode(&self) -> u32 {
-        if self.rx_remaining_bytes.get() == 0 {
-            chip::SleepMode::DeepSleep as u32
-        } else {
-            chip::SleepMode::Sleep as u32
-        }
+    fn lowest_sleep_mode(&self) -> u32 {      
+        chip::SleepMode::Sleep as u32
     }
 }
