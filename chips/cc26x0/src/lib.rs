@@ -26,6 +26,7 @@ pub mod ioc;
 pub mod prcm;
 pub mod rtc;
 pub mod gpio;
+pub mod udma;
 pub mod tmp;
 
 pub mod power;

@@ -1,6 +1,7 @@
 use cortexm3::{self, nvic};
 use cc26xx::gpio;
 use cc26xx::peripheral_interrupts::*;
+use kernel::support;
 
 const X0_RF_CPE1: u32 = 2;
 const X0_RF_CPE0: u32 = 9;
@@ -11,7 +12,6 @@ use timer;
 use uart;
 use kernel;
 use rtc;
-use kernel::support;
 use peripherals;
 use power;
 

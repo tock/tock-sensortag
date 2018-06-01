@@ -85,8 +85,8 @@ pub unsafe fn reset_handler() {
     let led_pins = static_init!(
         [(&'static gpio::GPIOPin, capsules::led::ActivationMode); 2],
         [
-            (&gpio::PORT[10], capsules::led::ActivationMode::ActiveHigh), // Red
-            (&gpio::PORT[15], capsules::led::ActivationMode::ActiveHigh)  // Green
+            (&gpio::PORT[6], capsules::led::ActivationMode::ActiveHigh), // Red
+            (&gpio::PORT[7], capsules::led::ActivationMode::ActiveHigh)  // Green
         ]
     );
     let led = static_init!(
@@ -98,8 +98,8 @@ pub unsafe fn reset_handler() {
     let button_pins = static_init!(
         [(&'static gpio::GPIOPin, capsules::button::GpioMode); 2],
         [
-            (&gpio::PORT[0], capsules::button::GpioMode::LowWhenPressed), // Button 2
-            (&gpio::PORT[4], capsules::button::GpioMode::LowWhenPressed)  // Button 1
+            (&gpio::PORT[13], capsules::button::GpioMode::LowWhenPressed), // Button 2
+            (&gpio::PORT[14], capsules::button::GpioMode::LowWhenPressed)  // Button 1
         ]
     );
     let button = static_init!(
@@ -110,7 +110,7 @@ pub unsafe fn reset_handler() {
         btn.set_client(button);
     }
 
-    uart::UART0.set_pins(29, 28);
+    uart::UART0.set_pins(3, 2);
 
     let console = static_init!(
         capsules::console::Console<uart::UART>,
@@ -133,18 +133,16 @@ pub unsafe fn reset_handler() {
     let gpio_pins = static_init!(
         [&'static gpio::GPIOPin; 26],
         [
+            &gpio::PORT[0],
             &gpio::PORT[1],
-            &gpio::PORT[2],
-            &gpio::PORT[3],
+            &gpio::PORT[4],
             &gpio::PORT[5],
-            &gpio::PORT[6],
-            &gpio::PORT[7],
             &gpio::PORT[8],
             &gpio::PORT[9],
+            &gpio::PORT[10],
             &gpio::PORT[11],
             &gpio::PORT[12],
-            &gpio::PORT[13],
-            &gpio::PORT[14],
+            &gpio::PORT[15],
             &gpio::PORT[16],
             &gpio::PORT[17],
             &gpio::PORT[18],
@@ -157,6 +155,8 @@ pub unsafe fn reset_handler() {
             &gpio::PORT[25],
             &gpio::PORT[26],
             &gpio::PORT[27],
+            &gpio::PORT[28],
+            &gpio::PORT[29],
             &gpio::PORT[30],
             &gpio::PORT[31]
         ]
@@ -228,7 +228,7 @@ pub unsafe fn reset_handler() {
     );
     ble_radio_virtual_alarm.set_client(ble_radio);
 
-    let sensortag = Platform {
+    let launchxl = Platform {
         ble_radio,
         gpio,
         led,
@@ -256,7 +256,7 @@ pub unsafe fn reset_handler() {
     );
 
     kernel::main(
-        &sensortag,
+        &launchxl,
         &mut chip,
         &mut PROCESSES,
         &kernel::ipc::IPC::new(),

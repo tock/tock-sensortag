@@ -71,7 +71,6 @@ impl Ble {
 
     pub fn power_up(&self) {
         self.safe_to_deep_sleep.set(false);
-
         self.rfc.set_mode(rfc::RfcMode::BLE);
 
         /*

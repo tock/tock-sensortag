@@ -216,6 +216,7 @@ impl RFCore {
         bell_regs.rf_cpe_interrupt_enable.write(
             RFCpeInterrupts::INTERNAL_ERROR::SET + RFCpeInterrupts::COMMAND_DONE::SET
                 /*+ RFCpeInterrupts::BOOT_DONE::SET*/ + RFCpeInterrupts::TX_DONE::SET,
+
         );
         // Clear interrupt flags that might've been set by the init commands
         bell_regs.rf_cpe_interrupt_flags.set(0x00);
